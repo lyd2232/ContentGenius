@@ -1,6 +1,9 @@
 package com.contentgenius.user.config;
 
 import com.contentgenius.common.util.JwtUtils;
+import com.contentgenius.user.entity.User;
+import com.contentgenius.user.service.PermissionService;
+import com.contentgenius.user.service.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -28,6 +32,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtils jwtUtils;
+    @Autowired
+    private UserService userService;
+    @Autowired
+    private PermissionService permissionService;
 
     //白名单
     private List<String> skipAuthUrls;
@@ -58,25 +66,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             unauthorized(response);
             return;
         }
-        // 写入 SecurityContext，供 .authenticated() 使用（Gateway 过滤器无此步）
+        //根据token过去username
         String username = jwtUtils.getUsername(token);
+        //获取user
+        User user = userService.findByUsername(username);
+        //判空
+        if (user == null) {
+            unauthorized(response);
+            return;
+        }
+        //获取权限构建SimpleGrantedAuthority
+        List<SimpleGrantedAuthority> authorities = permissionService
+                .listCodesForUser(user.getId(), user.getMemberLevel())
+                .stream()
+                .map(SimpleGrantedAuthority::new)
+                .toList();
+        //构建UsernamePasswordAuthenticationToken
         UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(username, null, List.of());
+                new UsernamePasswordAuthenticationToken(username, null, authorities);
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        //放行
         chain.doFilter(request, response);
     }
-
-    //判断是否是跳过认证的url
-    public boolean isSkipUrl(String url) {
-        for (String skipAuthUrl : skipAuthUrls) {
-            if (url.startsWith(skipAuthUrl)) {
-                return true;
+        //判断是否是跳过认证的url
+        public boolean isSkipUrl (String url){
+            for (String skipAuthUrl : skipAuthUrls) {
+                if (url.startsWith(skipAuthUrl)) {
+                    return true;
+                }
             }
+            return false;
         }
-        return false;
-    }
 
     //返回格式
     private void unauthorized(HttpServletResponse response) throws IOException {
