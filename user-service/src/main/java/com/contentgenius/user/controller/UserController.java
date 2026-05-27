@@ -1,5 +1,8 @@
 package com.contentgenius.user.controller;
 
+import com.contentgenius.common.exception.BusinessException;
+import com.contentgenius.common.exception.ErrorCode;
+import com.contentgenius.common.result.Result;
 import com.contentgenius.user.entity.User;
 import com.contentgenius.user.service.LoginService;
 import com.contentgenius.user.service.RegisterService;
@@ -31,25 +34,25 @@ public class UserController {
     private UserService userService;
 
     @PostMapping("/register")
-    public Map<String, Object> register(@RequestBody RegisterRequest request) {
+    public Result<Map<String, Boolean>> register(@RequestBody RegisterRequest request) {
         Boolean success = registerService.register(new RegisterService.RegisterParam(
                 request.username(),
                 request.password(),
                 request.email(),
                 request.phone()
         ));
-        return Map.of("success", success);
+        return Result.ok(Map.of("success", success));
     }
 
     @PostMapping("/login")
-    public Map<String, String> login(@RequestBody LoginRequest request) {
+    public Result<Map<String, String>> login(@RequestBody LoginRequest request) {
         String token = loginService.login(request.username(), request.password());
-        return Map.of("token", token);
+        return Result.ok(Map.of("token", token));
     }
 
     @GetMapping("/me")
     @PreAuthorize("hasAuthority('user:read')")
-    public Map<String, Object> me() {
+    public Result<Map<String, Object>> me() {
         User user = currentUser();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", user.getId());
@@ -57,12 +60,12 @@ public class UserController {
         body.put("email", user.getEmail());
         body.put("phone", user.getPhone());
         body.put("memberLevel", user.getMemberLevel());
-        return body;
+        return Result.ok(body);
     }
 
     @PutMapping("/me")
     @PreAuthorize("hasAuthority('user:read')")
-    public Map<String, Object> updateMe(@RequestBody UpdateProfileRequest request) {
+    public Result<Map<String, Boolean>> updateMe(@RequestBody UpdateProfileRequest request) {
         User user = currentUser();
         User patch = new User();
         patch.setId(user.getId());
@@ -70,14 +73,14 @@ public class UserController {
         patch.setPhone(request.phone());
         patch.setPassword(request.password());
         Boolean success = userService.update(patch);
-        return Map.of("success", success);
+        return Result.ok(Map.of("success", success));
     }
 
     private User currentUser() {
         String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         User user = userService.findByUsername(username);
         if (user == null) {
-            throw new IllegalArgumentException("用户不存在");
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
         }
         return user;
     }
@@ -87,7 +90,6 @@ public class UserController {
 
     public record LoginRequest(String username, String password) {
     }
-
 
     public record UpdateProfileRequest(String email, String phone, String password) {
     }

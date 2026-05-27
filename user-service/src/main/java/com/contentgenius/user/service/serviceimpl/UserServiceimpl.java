@@ -1,6 +1,8 @@
 package com.contentgenius.user.service.serviceimpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.contentgenius.common.exception.BusinessException;
+import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.user.entity.User;
 import com.contentgenius.user.mapper.UserMapper;
 import com.contentgenius.user.service.UserService;
@@ -11,6 +13,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class UserServiceimpl implements UserService {
+
     @Autowired
     private UserMapper userMapper;
 
@@ -35,7 +38,7 @@ public class UserServiceimpl implements UserService {
     @Override
     public Boolean update(User user) {
         if (user == null || user.getId() == null) {
-            throw new IllegalArgumentException("用户 id 不能为空");
+            throw new BusinessException(ErrorCode.USER_ID_REQUIRED);
         }
         User db = userMapper.selectById(user.getId());
         if (db == null) {

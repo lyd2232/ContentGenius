@@ -1,5 +1,7 @@
 package com.contentgenius.user.service.serviceimpl;
 
+import com.contentgenius.common.exception.BusinessException;
+import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.user.entity.User;
 import com.contentgenius.user.service.RegisterService;
 import com.contentgenius.user.service.UserService;
@@ -20,15 +22,14 @@ public class RegisterServiceimpl implements RegisterService {
     @Override
     public Boolean register(RegisterParam param) {
         if (param == null || !StringUtils.hasText(param.username()) || !StringUtils.hasText(param.password())) {
-            throw new IllegalArgumentException("用户名和密码不能为空");
+            throw new BusinessException(ErrorCode.USERNAME_PASSWORD_REQUIRED);
         }
         if (userService.findByUsername(param.username()) != null) {
-            throw new IllegalArgumentException("用户名已存在");
+            throw new BusinessException(ErrorCode.USERNAME_EXISTS);
         }
 
         User user = new User();
         user.setUsername(param.username());
-        //密码加密
         user.setPassword(passwordEncoder.encode(param.password()));
         user.setEmail(param.email());
         user.setPhone(param.phone());
