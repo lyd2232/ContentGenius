@@ -32,73 +32,67 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtils jwtUtils;
+
     @Autowired
     private UserService userService;
+
     @Autowired
     private PermissionService permissionService;
 
-    //白名单
     private List<String> skipAuthUrls;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        //获取请求头并判断白名单
         String url = request.getRequestURI();
         if (skipAuthUrls != null && isSkipUrl(url)) {
-            //放行
             chain.doFilter(request, response);
             return;
         }
-        //获取请求头
+
         String auth = request.getHeader("Authorization");
-        //判断请求头是否空
         if (!StringUtils.hasText(auth)) {
             unauthorized(response);
             return;
         }
-        //获取token
+
         String token = auth.startsWith("Bearer ") ? auth.substring(7).trim() : auth.trim();
-        //校验合法性
         if (!jwtUtils.verify(token)) {
-            //返回格式
             unauthorized(response);
             return;
         }
-        //根据token过去username
+
         String username = jwtUtils.getUsername(token);
-        //获取user
         User user = userService.findByUsername(username);
-        //判空
         if (user == null) {
             unauthorized(response);
             return;
         }
-        //获取权限构建SimpleGrantedAuthority
+
         List<SimpleGrantedAuthority> authorities = permissionService
                 .listCodesForUser(user.getId(), user.getMemberLevel())
                 .stream()
                 .map(SimpleGrantedAuthority::new)
                 .toList();
-        //构建UsernamePasswordAuthenticationToken
+
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(username, null, authorities);
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
         SecurityContextHolder.getContext().setAuthentication(authentication);
+
         chain.doFilter(request, response);
     }
-        //判断是否是跳过认证的url
-        public boolean isSkipUrl (String url){
-            for (String skipAuthUrl : skipAuthUrls) {
-                if (url.startsWith(skipAuthUrl)) {
-                    return true;
-                }
-            }
-            return false;
-        }
 
-    //返回格式
+    public boolean isSkipUrl(String url) {
+        for (String skipAuthUrl : skipAuthUrls) {
+            if (url.startsWith(skipAuthUrl)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void unauthorized(HttpServletResponse response) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");

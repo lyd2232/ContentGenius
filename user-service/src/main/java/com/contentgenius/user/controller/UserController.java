@@ -1,16 +1,20 @@
 package com.contentgenius.user.controller;
 
+import com.contentgenius.user.entity.User;
 import com.contentgenius.user.service.LoginService;
 import com.contentgenius.user.service.RegisterService;
+import com.contentgenius.user.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestController
@@ -22,6 +26,9 @@ public class UserController {
 
     @Autowired
     private LoginService loginService;
+
+    @Autowired
+    private UserService userService;
 
     @PostMapping("/register")
     public Map<String, Object> register(@RequestBody RegisterRequest request) {
@@ -40,19 +47,48 @@ public class UserController {
         return Map.of("token", token);
     }
 
-    /** 需登录，用于验收 JWT 过滤器 */
-
     @GetMapping("/me")
-    @PreAuthorize("hasAuthority('content:write')")
+    @PreAuthorize("hasAuthority('user:read')")
+    public Map<String, Object> me() {
+        User user = currentUser();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", user.getId());
+        body.put("username", user.getUsername());
+        body.put("email", user.getEmail());
+        body.put("phone", user.getPhone());
+        body.put("memberLevel", user.getMemberLevel());
+        return body;
+    }
 
-    public Map<String, String> me() {
+    @PutMapping("/me")
+    @PreAuthorize("hasAuthority('user:read')")
+    public Map<String, Object> updateMe(@RequestBody UpdateProfileRequest request) {
+        User user = currentUser();
+        User patch = new User();
+        patch.setId(user.getId());
+        patch.setEmail(request.email());
+        patch.setPhone(request.phone());
+        patch.setPassword(request.password());
+        Boolean success = userService.update(patch);
+        return Map.of("success", success);
+    }
+
+    private User currentUser() {
         String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return Map.of("username", username);
+        User user = userService.findByUsername(username);
+        if (user == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        return user;
     }
 
     public record RegisterRequest(String username, String password, String email, String phone) {
     }
 
     public record LoginRequest(String username, String password) {
+    }
+
+
+    public record UpdateProfileRequest(String email, String phone, String password) {
     }
 }
