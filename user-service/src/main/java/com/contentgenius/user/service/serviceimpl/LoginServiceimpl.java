@@ -3,7 +3,7 @@ package com.contentgenius.user.service.serviceimpl;
 import com.contentgenius.user.entity.User;
 import com.contentgenius.user.service.LoginService;
 import com.contentgenius.user.service.UserService;
-import com.contentgenius.user.util.JwtUtils;
+import com.contentgenius.common.util.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
