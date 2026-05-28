@@ -23,6 +23,9 @@ import java.util.List;
 @Slf4j
 @Component
 @ConfigurationProperties(prefix = "jwt")
+/**
+ * 网关层面设置白名单，解析token验证token
+ */
 public class LoginGlobalFilter implements GlobalFilter, Ordered {
 
     @Autowired
@@ -70,7 +73,7 @@ public class LoginGlobalFilter implements GlobalFilter, Ordered {
         }
         return false;
     }
-//返回格式
+//401问题返回
     private Mono<Void> unauthorized(ServerWebExchange exchange) {
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(HttpStatus.UNAUTHORIZED);

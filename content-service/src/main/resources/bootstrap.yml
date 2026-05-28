@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: content-service
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      username: nacos
+      password: 182482
+      config:
+        server-addr: 82.157.176.149:8848
+        namespace: 479fab5c-ce60-4d63-b543-b9b66e18cf8f
+        group: DEFAULT_GROUP
+        file-extension: yaml
+        username: nacos
+        password: 182482
+      discovery:
+        server-addr: 82.157.176.149:8848
+        namespace: 479fab5c-ce60-4d63-b543-b9b66e18cf8f
+        username: nacos
+        password: 182482

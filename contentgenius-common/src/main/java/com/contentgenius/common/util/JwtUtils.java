@@ -22,14 +22,16 @@ public class JwtUtils {
     private long tokenExpireTime;
 
     private static final String CLAIM_USERNAME = "username";
+    private static final String CLAIM_USER_ID = "userId";
 
-    public String createToken(String username) {
+    public String createToken(String username, Long userId) {
         Date now = new Date();
         Algorithm algorithm = Algorithm.HMAC256(secretKey);
         return JWT.create()
                 .withIssuedAt(now)
                 .withExpiresAt(new Date(now.getTime() + tokenExpireTime))
                 .withClaim(CLAIM_USERNAME, username)
+                .withClaim(CLAIM_USER_ID, userId)
                 .sign(algorithm);
     }
 
@@ -52,5 +54,14 @@ public class JwtUtils {
                 .verify(token)
                 .getClaim(CLAIM_USERNAME)
                 .asString();
+    }
+
+    public Long getUserId(String token) {
+        Algorithm algorithm = Algorithm.HMAC256(secretKey);
+        return JWT.require(algorithm)
+                .build()
+                .verify(token)
+                .getClaim(CLAIM_USER_ID)
+                .asLong();
     }
 }

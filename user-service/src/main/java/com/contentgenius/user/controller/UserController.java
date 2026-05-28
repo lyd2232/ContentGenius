@@ -63,8 +63,8 @@ public class UserController {
         return Result.ok(body);
     }
 
-    @PutMapping("/me")
-    @PreAuthorize("hasAuthority('user:read')")
+    @PutMapping("/me1")
+    @PreAuthorize("hasAuthority('user:write')")
     public Result<Map<String, Boolean>> updateMe(@RequestBody UpdateProfileRequest request) {
         User user = currentUser();
         User patch = new User();

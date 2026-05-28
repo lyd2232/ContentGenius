@@ -31,6 +31,6 @@ public class LoginServiceimpl implements LoginService {
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
-        return jwtUtils.createToken(username);
+        return jwtUtils.createToken(username, user.getId());
     }
 }

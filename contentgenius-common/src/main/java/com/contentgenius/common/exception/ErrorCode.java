@@ -12,6 +12,8 @@ public enum ErrorCode {
     USERNAME_EXISTS(40003, "用户名已存在"),
     USERNAME_PASSWORD_REQUIRED(40004, "用户名和密码不能为空"),
     USER_ID_REQUIRED(40005, "用户 id 不能为空"),
+    PROJECT_NOT_FOUND(40010, "项目不存在"),
+    VERSION_NOT_FOUND(40011, "内容版本不存在"),
     FORBIDDEN(40300, "无访问权限"),
     NOT_FOUND(40400, "请求路径不存在"),
     BAD_GATEWAY(50200, "下游服务异常"),
