@@ -33,14 +33,14 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-cloud.version>2023.0.3</spring-cloud.version>
         <spring-cloud-alibaba.version>2023.0.1.2</spring-cloud-alibaba.version>
-        <langchain4j.version>0.36.2</langchain4j.version>
+        <langchain4j.version>1.15.0</langchain4j.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <jjwt.version>0.12.6</jjwt.version>
         <java-jwt.version>4.4.0</java-jwt.version>
         <minio.version>8.5.11</minio.version>
         <xxl-job.version>2.4.1</xxl-job.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
-        <langchain4j-embeddings.version>0.36.2</langchain4j-embeddings.version>
+        <langchain4j-embeddings.version>${langchain4j.version}</langchain4j-embeddings.version>
     </properties>
 
     <dependencyManagement>

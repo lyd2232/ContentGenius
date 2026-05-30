@@ -1,0 +1,86 @@
+package com.contentgenius.agent.config;
+
+import com.contentgenius.agent.llm.LlmHttpErrorInterceptor;
+import dev.langchain4j.http.client.okhttp.OkHttpClientBuilder;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import okhttp3.OkHttpClient;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.time.Duration;
+
+/**
+ * 注册三个 ChatModel Bean（qwen-max / plus / turbo），供 @AiService 注入。
+ * <p>
+ * HTTP 层使用 OkHttp，并挂载 {@link LlmHttpErrorInterceptor}，在非 2xx 时解析 JSON 错误。
+ */
+@Configuration
+@EnableConfigurationProperties({
+        QwenMaxProperties.class,
+        QwenPlusProperties.class,
+        QwenTurboProperties.class
+})
+public class LLMConfig {
+
+    // TCP 建连最长等待时间（与 Feign 的 connectTimeout 同理，但只作用于调 DashScope）
+    private static final Duration LLM_CONNECT_TIMEOUT = Duration.ofSeconds(15);
+
+    // 等待大模型生成完响应的最长时间（写稿可能较慢）
+    private static final Duration LLM_READ_TIMEOUT = Duration.ofSeconds(120);
+
+    /** 写长文主模型，Bean 名与 @AiService(chatModel = "qwenMaxChatModel") 一致 */
+    @Bean("qwenMaxChatModel")
+    public ChatModel qwenMaxChatModel(QwenMaxProperties props) {
+        return build(props.getEndpoint(), props.getApiKey(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
+    /** 备胎模型，主模型 429/5xx 时由 ContentGeniusAgent 切换使用 */
+    @Bean("qwenPlusChatModel")
+    public ChatModel qwenPlusChatModel(QwenPlusProperties props) {
+        return build(props.getEndpoint(), props.getApiKey(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
+    /** 快速模型，RouteType.FAST 预留 */
+    @Bean("qwenTurboChatModel")
+    public ChatModel qwenTurboChatModel(QwenTurboProperties props) {
+        return build(props.getEndpoint(), props.getApiKey(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
+    /**
+     * 三个 Bean 共用的构建逻辑。
+     */
+    private static ChatModel build(String endpoint, String apiKey, String modelName,
+                                   Double temperature, Integer maxTokens) {
+        // 原生 OkHttp 配置：超时 + 错误拦截器（读 HTTP 状态与 JSON）
+        OkHttpClient.Builder okHttpBuilder = new OkHttpClient.Builder()
+                .connectTimeout(LLM_CONNECT_TIMEOUT)
+                .readTimeout(LLM_READ_TIMEOUT)
+                // 非 2xx 时抛 LlmApiException，不再只靠 LangChain4j 封装的模糊文案
+                .addInterceptor(new LlmHttpErrorInterceptor());
+
+        // 交给 LangChain4j 的 OkHttp 适配层
+        OkHttpClientBuilder httpClientBuilder = new OkHttpClientBuilder()
+                .okHttpClientBuilder(okHttpBuilder);
+
+        return OpenAiChatModel.builder()
+                // 指定自定义 HTTP 客户端（含上面的拦截器）
+                .httpClientBuilder(httpClientBuilder)
+                // DashScope
+                .baseUrl(endpoint)
+                // 会自动写入 Authorization: Bearer <apiKey>
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .temperature(temperature != null ? temperature : 0.5)
+                .maxTokens(maxTokens)
+                // LangChain4j 层面的总超时，与 OkHttp readTimeout 对齐
+                .timeout(LLM_READ_TIMEOUT)
+                // 关闭 LangChain4j 内置同模型重试，避免与「max → plus」fallback 重复
+                .maxRetries(0)
+                .build();
+    }
+}
