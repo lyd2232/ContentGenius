@@ -13,7 +13,10 @@ import java.util.List;
  * <p>作用：按 platform 查询 template 表，拿到 prompt_hint 用于拼 System Prompt。
  */
 // name 必须与 Nacos 注册的服务名一致，LoadBalancer 才能解析到 content-service 实例
-@FeignClient(name = "content-service", path = "/api/content/templates")
+@FeignClient(
+        name = "content-service",
+        contextId = "contentTemplateClient",
+        path = "/api/content/templates")
 public interface ContentTemplateClient {
 
     /**

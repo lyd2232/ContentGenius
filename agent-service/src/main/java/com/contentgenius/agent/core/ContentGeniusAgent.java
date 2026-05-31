@@ -14,12 +14,21 @@ import com.contentgenius.agent.writer.ArticleWriter;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.common.result.Result;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * 写稿编排核心：拉 template → 拼 Prompt → 调 @AiService 写稿 → Feign 存 content_version。
@@ -51,15 +60,134 @@ public class ContentGeniusAgent {
         // 构建stream和user提示
         String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, null);
         String userPrompt = promptBuilder.buildUserPrompt(topic);
+        String authorization = currentAuthorizationHeader();
 
         //调大模型返回
         String content = generateWithFallback(systemPrompt, userPrompt);
 //保存
-        ContentVersionDto saved = saveVersion(projectId, topic, content, resolvedPlatform);
+        ContentVersionDto saved = saveVersion(projectId, topic, content, resolvedPlatform, authorization);
         return new AgentChatResponse(content, resolvedPlatform, saved.getId(), saved.getVersionNo());
     }
+    /**
+     * TokenStream 真流式：
+     * <p>onPartialResponse 推 token，onCompleteResponse 落库并发 done，onError 处理 fallback。
+     */
+    public Flux<AgentChatResponse> streamChat(Long projectId, String topic, String platform) {
+        // 1) 规范化平台参数：空值时用默认平台，避免后续 prompt/null 问题
+        String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
+
+        // 2) 拉取平台模板提示词（失败时 loadPromptHint 内部会返回 null 兜底）
+        String promptHint = loadPromptHint(resolvedPlatform);
+
+        // 3) 组装 System 提示词（平台规则 + 模板 hint）
+        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, null);
+        // 4) 组装 User 提示词（用户本次主题）
+        String userPrompt = promptBuilder.buildUserPrompt(topic);
+        // 5) 提前读取 Authorization（后续切线程后 RequestContext 可能拿不到）
+        String authorization = currentAuthorizationHeader();
+        // 6) 是否已输出过任意 token：控制主模型失败时能否“无缝切备胎”
+        AtomicBoolean emittedPartial = new AtomicBoolean(false);
+        // 7) 累计完整正文：每个 partial 都 append，最终落库用这个字符串
+        StringBuilder fullContent = new StringBuilder();
+
+        // 8) 创建 Flux：sink 是 SSE 出口，后续 next/complete/error 都写到这里
+        return Flux.<AgentChatResponse>create(new Consumer<FluxSink<AgentChatResponse>>() {
+                    @Override
+                    public void accept(FluxSink<AgentChatResponse> sink) {
+                        // 9) 进入 TokenStream 主逻辑（先主模型，必要时 fallback）
+                        streamWithTokenStreamFallback(RouteType.ARTICLE, systemPrompt, userPrompt,
+                                projectId, topic, resolvedPlatform, authorization, fullContent, emittedPartial, sink);
+                    }
+                })
+                // 10) LLM 回调桥接 + Feign 存稿可能阻塞，放到弹性线程池执行
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private void streamWithTokenStreamFallback(RouteType routeType,
+                                               String systemPrompt,
+                                               String userPrompt,
+                                               Long projectId,
+                                               String topic,
+                                               String platform,
+                                               String authorization,
+                                               StringBuilder fullContent,
+                                               AtomicBoolean emittedPartial,
+                                               FluxSink<AgentChatResponse> sink) {
+        // A) 由 RouteType 决定本轮调用哪个流式模型（ARTICLE=主模型，FALLBACK=备胎）
+        TokenStream tokenStream = articleWriter.writeStream(routeType, systemPrompt, userPrompt);
+
+        // B) 绑定 TokenStream 三类回调：partial / complete / error
+        tokenStream
+                .onPartialResponse(new Consumer<String>() {
+                    @Override
+                    public void accept(String partial) {
+                        // B1) 客户端断开，或 token 为空：不再继续推送
+                        if (sink.isCancelled() || partial == null || partial.isEmpty()) {
+                            return;
+                        }
+                        // B2) 标记“已有输出”，用于错误时判断是否还能切备胎
+                        emittedPartial.set(true);
+                        // B3) 累计正文，供完成后落库
+                        fullContent.append(partial);
+                        // B4) 把本段 token 作为一条 SSE 消息推给前端
+                        sink.next(new AgentChatResponse(partial, platform, null, null));
+                    }
+                })
+                // C) 完成回调：模型正常输出结束后执行
+                .onCompleteResponse(new Consumer<ChatResponse>() {
+                    @Override
+                    public void accept(ChatResponse response) {
+                        // C1) 客户端已取消时，不再落库和收尾
+                        if (sink.isCancelled()) {
+                            return;
+                        }
+                        try {
+                            // C2) 用完整正文落库 content_version
+                            ContentVersionDto saved = saveVersion(projectId, topic, fullContent.toString(), platform, authorization);
+                            // C3) 发送 done 事件：content 置空，仅携带版本信息
+                            sink.next(new AgentChatResponse("", platform, saved.getId(), saved.getVersionNo()));
+                            // C4) 正常结束 SSE 流
+                            sink.complete();
+                        } catch (Exception ex) {
+                            // C5) 落库失败，向前端发错误终止
+                            sink.error(ex);
+                        }
+                    }
+                })
+                // D) 错误回调：模型请求失败时执行
+                .onError(new Consumer<Throwable>() {
+                    @Override
+                    public void accept(Throwable ex) {
+                        // D1) 先打结构化日志，便于定位 HTTP 状态/错误码
+                        logLlmFailure(routeType == RouteType.FALLBACK ? "备胎模型" : "主模型", ex);
+
+                        // D2) 仅在主模型阶段考虑是否切备胎
+                        if (routeType == RouteType.ARTICLE) {
+                            // D3) 判断是否属于可降级错误（429/5xx/超时等）
+                            boolean shouldFallback = LlmErrorClassifier.shouldFallback(ex);
+                            // 主模型还没输出 token 时，允许切备胎无缝重试
+                            if (shouldFallback && !emittedPartial.get()) {
+                                // D4) 递归切换到备胎模型，复用同一 sink/fullContent
+                                streamWithTokenStreamFallback(RouteType.FALLBACK, systemPrompt, userPrompt,
+                                        projectId, topic, platform, authorization, fullContent, emittedPartial, sink);
+                                return;
+                            }
+                            // D5) 不可降级错误：直接转换业务异常返回
+                            if (!shouldFallback) {
+                                sink.error(LlmErrorClassifier.toBusinessException(ex));
+                                return;
+                            }
+                        }
+                        // D6) 备胎失败或不可继续时，统一返回 503 业务异常
+                        sink.error(new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "AI 模型暂时不可用，请稍后重试"));
+                    }
+                })
+                // E) start() 必须调用：前面只是“注册回调”，这里才真正发起流式请求
+                .start();
+    }
 //存稿内部方法
-    private ContentVersionDto saveVersion(Long projectId, String topic, String content, String platform) {
+    private ContentVersionDto saveVersion(Long projectId, String topic, String content, String platform,
+                                          String authorization) {
         VersionRequest request = new VersionRequest();
         //草稿标题
         request.setTitle(buildTitle(topic));
@@ -69,7 +197,7 @@ public class ContentGeniusAgent {
 
         try {
             //存稿失败
-            Result<ContentVersionDto> result = versionsClient.create(projectId, request);
+            Result<ContentVersionDto> result = versionsClient.create(projectId, authorization, request);
             if (result == null || result.getData() == null) {
                 throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "存稿失败：content-service 无有效响应");
             }
@@ -90,6 +218,19 @@ public class ContentGeniusAgent {
         }
         String trimmed = topic.trim();
         return trimmed.length() <= TITLE_MAX_LEN ? trimmed : trimmed.substring(0, TITLE_MAX_LEN);
+    }
+
+    /**
+     * 从当前入站请求中读取 Authorization。
+     * <p>流式链路切到 boundedElastic 后 ThreadLocal 上下文会丢失，所以要在入口线程先取出来并显式透传。
+     */
+    private static String currentAuthorizationHeader() {
+        ServletRequestAttributes attributes =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            return null;
+        }
+        return attributes.getRequest().getHeader("Authorization");
     }
 
     private String loadPromptHint(String platform) {

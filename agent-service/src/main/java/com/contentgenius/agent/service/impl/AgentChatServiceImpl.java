@@ -6,6 +6,7 @@ import com.contentgenius.agent.dto.AgentChatResponse;
 import com.contentgenius.agent.service.AgentChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 /**
  * 写稿 Service 实现
@@ -24,6 +25,12 @@ public class AgentChatServiceImpl implements AgentChatService {
     @Override
     public AgentChatResponse chat(AgentChatRequest request) {
         return contentGeniusAgent.chat(
+                request.getProjectId(), request.getTopic(), request.getPlatform());
+    }
+
+    @Override
+    public Flux<AgentChatResponse> chatStream(AgentChatRequest request) {
+        return contentGeniusAgent.streamChat(
                 request.getProjectId(), request.getTopic(), request.getPlatform());
     }
 }

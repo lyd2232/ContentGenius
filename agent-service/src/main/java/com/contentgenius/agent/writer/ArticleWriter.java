@@ -4,6 +4,7 @@ import com.contentgenius.agent.model.RouteType;
 import com.contentgenius.agent.writer.assistant.ArticleWriterFallbackAssistant;
 import com.contentgenius.agent.writer.assistant.ArticleWriterFastAssistant;
 import com.contentgenius.agent.writer.assistant.ArticleWriterQualityAssistant;
+import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +30,17 @@ public class ArticleWriter {
             case ARTICLE -> qualityAssistant.write(systemPrompt, userPrompt);
             case FAST -> fastAssistant.write(systemPrompt, userPrompt);
             case FALLBACK -> fallbackAssistant.write(systemPrompt, userPrompt);
+        };
+    }
+
+    /**
+     * 流式写稿：当前仅主模型与备胎支持流式，FAST 档位本期不走此分支。
+     */
+    public TokenStream writeStream(RouteType routeType, String systemPrompt, String userPrompt) {
+        return switch (routeType) {
+            case ARTICLE -> qualityAssistant.writeStream(systemPrompt, userPrompt);
+            case FALLBACK -> fallbackAssistant.writeStream(systemPrompt, userPrompt);
+            case FAST -> throw new IllegalArgumentException("FAST routeType is not supported for streaming");
         };
     }
 }

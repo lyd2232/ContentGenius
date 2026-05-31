@@ -3,7 +3,9 @@ package com.contentgenius.agent.config;
 import com.contentgenius.agent.llm.LlmHttpErrorInterceptor;
 import dev.langchain4j.http.client.okhttp.OkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import okhttp3.OkHttpClient;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -37,10 +39,24 @@ public class LLMConfig {
                 props.getTemperature(), props.getMaxTokens());
     }
 
+    /** 写长文主模型的流式版本，供 SSE 接口使用 */
+    @Bean("qwenMaxStreamingChatModel")
+    public StreamingChatModel qwenMaxStreamingChatModel(QwenMaxProperties props) {
+        return buildStreaming(props.getEndpoint(), props.getApiKey(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
     /** 备胎模型，主模型 429/5xx 时由 ContentGeniusAgent 切换使用 */
     @Bean("qwenPlusChatModel")
     public ChatModel qwenPlusChatModel(QwenPlusProperties props) {
         return build(props.getEndpoint(), props.getApiKey(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
+    /** 备胎模型的流式版本 */
+    @Bean("qwenPlusStreamingChatModel")
+    public StreamingChatModel qwenPlusStreamingChatModel(QwenPlusProperties props) {
+        return buildStreaming(props.getEndpoint(), props.getApiKey(), props.getModelName(),
                 props.getTemperature(), props.getMaxTokens());
     }
 
@@ -81,6 +97,30 @@ public class LLMConfig {
                 .timeout(LLM_READ_TIMEOUT)
                 // 关闭 LangChain4j 内置同模型重试，避免与「max → plus」fallback 重复
                 .maxRetries(0)
+                .build();
+    }
+
+    /**
+     * SSE 接口使用的流式模型构建逻辑。
+     */
+    private static StreamingChatModel buildStreaming(String endpoint, String apiKey, String modelName,
+                                                     Double temperature, Integer maxTokens) {
+        OkHttpClient.Builder okHttpBuilder = new OkHttpClient.Builder()
+                .connectTimeout(LLM_CONNECT_TIMEOUT)
+                .readTimeout(LLM_READ_TIMEOUT)
+                .addInterceptor(new LlmHttpErrorInterceptor());
+
+        OkHttpClientBuilder httpClientBuilder = new OkHttpClientBuilder()
+                .okHttpClientBuilder(okHttpBuilder);
+
+        return OpenAiStreamingChatModel.builder()
+                .httpClientBuilder(httpClientBuilder)
+                .baseUrl(endpoint)
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .temperature(temperature != null ? temperature : 0.5)
+                .maxTokens(maxTokens)
+                .timeout(LLM_READ_TIMEOUT)
                 .build();
     }
 }
