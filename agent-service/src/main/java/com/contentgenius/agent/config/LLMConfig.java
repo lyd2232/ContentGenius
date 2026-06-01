@@ -23,7 +23,8 @@ import java.time.Duration;
         QwenMaxProperties.class,
         QwenPlusProperties.class,
         QwenTurboProperties.class,
-        PromptProperties.class
+        PromptProperties.class,
+        WebSearchProperties.class
 })
 public class LLMConfig {
 

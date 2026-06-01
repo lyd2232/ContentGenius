@@ -44,9 +44,16 @@ public class PromptBuilder {
                 .append(styleLine);//添加写法
 
         if (StringUtils.hasText(ragContext)) {//后续rag
-            sb.append("\n可参考以下历史稿件片段（勿照抄，仅作风格与事实参考）：\n")
+            sb.append("\n可参考以下联网检索摘要（含来源链接，注意时效并自行核实，勿照抄）：\n")
                     .append(ragContext.trim())
-                    .append('\n');
+                    .append('\n')
+                    .append("""
+                            
+                            输出要求（强制）：
+                            1) 正文写完后，必须追加一个“参考链接”小节；
+                            2) 至少列出 3 条可访问 URL（每行一条）；
+                            3) 只能使用上方联网检索摘要里出现过的链接，不得编造。
+                            """);
         }
 
         return sb.toString().trim();
@@ -58,6 +65,22 @@ public class PromptBuilder {
             throw new IllegalArgumentException("创作主题不能为空");
         }
         return "请围绕以下主题撰写初稿：\n" + topic.trim();
+    }
+
+    /**
+     * 判断当前平台是否命中 Nacos 的平台提示词配置。
+     */
+    public boolean hasNacosPrompt(String platform) {
+        Map<String, String> nacosPlatformPrompt = promptProperties.getPlatform();
+        if (nacosPlatformPrompt == null || nacosPlatformPrompt.isEmpty()) {
+            return false;
+        }
+        String normalizedPlatform = normalizePlatform(platform);
+        String fromNacos = nacosPlatformPrompt.get(normalizedPlatform);
+        if (!StringUtils.hasText(fromNacos) && StringUtils.hasText(platform)) {
+            fromNacos = nacosPlatformPrompt.get(platform.trim());
+        }
+        return StringUtils.hasText(fromNacos);
     }
 
     /**

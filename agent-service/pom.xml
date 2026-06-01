@@ -80,6 +80,11 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-easy-rag</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.github.houbb</groupId>
+            <artifactId>sensitive-word</artifactId>
+            <version>0.21.0</version>
+        </dependency>
         <!-- RAG 向量存储：Qdrant（langchain4j-qdrant 或 Qdrant Client + EmbeddingStore）；Redis 仅会话/额度，不做向量库 -->
         <!-- 国产模型可选：langchain4j-community-dashscope（版本见 langchain4j-community BOM） -->
         <dependency>

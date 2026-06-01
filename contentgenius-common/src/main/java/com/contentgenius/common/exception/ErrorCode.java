@@ -18,7 +18,8 @@ public enum ErrorCode {
     NOT_FOUND(40400, "请求路径不存在"),
     BAD_GATEWAY(50200, "下游服务异常"),
     SERVICE_UNAVAILABLE(50300, "服务暂时不可用"),
-    INTERNAL_ERROR(50000, "服务器内部错误");
+    INTERNAL_ERROR(50000, "服务器内部错误"),
+    CONTENT_CONTAINS_SENSITIVE_WORDS(50001, "内容包含敏感词");
 
     private final int code;
     private final String message;

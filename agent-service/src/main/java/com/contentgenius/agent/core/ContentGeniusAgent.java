@@ -10,10 +10,12 @@ import com.contentgenius.agent.dto.VersionRequest;
 import com.contentgenius.agent.llm.LlmApiException;
 import com.contentgenius.agent.llm.LlmErrorClassifier;
 import com.contentgenius.agent.model.RouteType;
+import com.contentgenius.agent.tools.ChatAssistant;
 import com.contentgenius.agent.writer.ArticleWriter;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.common.result.Result;
+import com.github.houbb.sensitive.word.core.SensitiveWordHelper;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,8 @@ public class ContentGeniusAgent {
     private static final String SOURCE_AGENT = "agent";
     //草稿标题最大长度
     private static final int TITLE_MAX_LEN = 256;
+    // 联网摘要过长时做截断，避免 prompt 体积过大
+    private static final int WEB_CONTEXT_MAX_LEN = 2500;
 //查模板
     private final ContentTemplateClient contentTemplateClient;
     //存表
@@ -49,16 +53,22 @@ public class ContentGeniusAgent {
     private final PromptBuilder promptBuilder;
     //写稿
     private final ArticleWriter articleWriter;
+    //联网检索助手
+    private final ChatAssistant chatAssistant;
+
 
     public AgentChatResponse chat(Long projectId, String topic, String platform) {
         // platform 为空时默认小红书，与 template 种子一致
         String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
 
-        // 查content中的模板
-        String promptHint = loadPromptHint(resolvedPlatform);
+        // Nacos 命中时直接使用配置，避免多余查库与误告警
+        String promptHint = resolvePromptHintByPriority(resolvedPlatform);
+        // 联网检索主题上下文（失败时自动降级为 null）
+        String webContext = loadWebContext(topic);
 
         // 构建stream和user提示
-        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, null);
+        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, webContext);
+
         String userPrompt = promptBuilder.buildUserPrompt(topic);
         String authorization = currentAuthorizationHeader();
 
@@ -76,11 +86,13 @@ public class ContentGeniusAgent {
         // 1) 规范化平台参数：空值时用默认平台，避免后续 prompt/null 问题
         String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
 
-        // 2) 拉取平台模板提示词（失败时 loadPromptHint 内部会返回 null 兜底）
-        String promptHint = loadPromptHint(resolvedPlatform);
+        // 2) Nacos 命中时直接使用配置，未命中再查模板表兜底
+        String promptHint = resolvePromptHintByPriority(resolvedPlatform);
+        // 2.1) 联网检索主题上下文
+        String webContext = loadWebContext(topic);
 
         // 3) 组装 System 提示词（平台规则 + 模板 hint）
-        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, null);
+        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, webContext);
         // 4) 组装 User 提示词（用户本次主题）
         String userPrompt = promptBuilder.buildUserPrompt(topic);
         // 5) 提前读取 Authorization（后续切线程后 RequestContext 可能拿不到）
@@ -244,6 +256,37 @@ public class ContentGeniusAgent {
             return template.getPromptHint();
         } catch (Exception ex) {
             log.warn("拉取 content 模板失败 platform={}，使用内置默认: {}", platform, ex.getMessage());
+            return null;
+        }
+    }
+
+    private String resolvePromptHintByPriority(String platform) {
+        if (promptBuilder.hasNacosPrompt(platform)) {
+            log.info("命中 Nacos 平台提示词，跳过模板查询 platform={}", platform);
+            return null;
+        }
+        return loadPromptHint(platform);
+    }
+
+    private String loadWebContext(String topic) {
+        if (!StringUtils.hasText(topic)) {
+            return null;
+        }
+        try {
+            log.info("开始联网检索 topic={}", topic);
+            String summary = chatAssistant.chat(topic.trim());//联网搜索
+            if (!StringUtils.hasText(summary)) {
+                log.warn("联网检索返回为空 topic={}", topic);
+                return null;
+            }
+            String normalized = summary.trim();//去除空格
+            String webContext = normalized.length() <= WEB_CONTEXT_MAX_LEN//截取长度
+                    ? normalized
+                    : normalized.substring(0, WEB_CONTEXT_MAX_LEN);
+            log.info("联网检索成功 topic={} contextLength={}", topic, webContext.length());
+            return webContext;
+        } catch (Exception ex) {
+            log.warn("联网搜索失败，继续使用本地提示词 topic={}: {}", topic, ex.getMessage());
             return null;
         }
     }
