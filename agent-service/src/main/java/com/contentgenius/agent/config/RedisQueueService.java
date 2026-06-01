@@ -1,1 +1,80 @@
-package com.contentgenius.agent.config;import com.contentgenius.common.exception.BusinessException;import com.contentgenius.common.exception.ErrorCode;import lombok.RequiredArgsConstructor;import org.springframework.data.redis.core.StringRedisTemplate;import org.springframework.stereotype.Service;import java.time.LocalDate;import java.time.LocalDateTime;import java.time.format.DateTimeFormatter;import java.time.temporal.ChronoUnit;import java.util.concurrent.TimeUnit;/** * 免费额度：每个用户每天共用一个计数器（写稿/流式各调一次接口算 1 次，与是否联网无关）。 * <p>Key 示例：chat:42:20260601 */@Service@RequiredArgsConstructorpublic class RedisQueueService {    private final StringRedisTemplate stringRedisTemplate;    private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");//限制写稿次数    private static final int DAILY_LIMIT = 3;    public void incrementChatQuota(long userId) {//拼接rediskey        String redisKey = buildChatQuotaKey(userId);//获取当前用户当天已用次数        Long usedCount = stringRedisTemplate.opsForValue().increment(redisKey);        if (usedCount == null) {            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "额度服务暂时不可用");        }        //如果是1则设置清楚时间        if (usedCount == 1L) {            long secondsUntilMidnight = secondsUntilEndOfDay();            stringRedisTemplate.expire(redisKey, secondsUntilMidnight, TimeUnit.SECONDS);        }        if (usedCount > DAILY_LIMIT) {            throw new BusinessException(                    ErrorCode.FORBIDDEN,                    "今日免费额度已用完（" + DAILY_LIMIT + " 次/天）"            );        }    }//构建rediskey    private String buildChatQuotaKey(long userId) {        String day = LocalDate.now().format(DAY_FORMAT);        return userId + ":" + day;    }//计算今日结束时间    private static long secondsUntilEndOfDay() {        LocalDateTime now = LocalDateTime.now();        LocalDateTime tomorrowStart = now.toLocalDate().plusDays(1).atStartOfDay();        return Math.max(1L, ChronoUnit.SECONDS.between(now, tomorrowStart));    }}
+package com.contentgenius.agent.config;
+
+import com.contentgenius.agent.client.GetLevel;
+import com.contentgenius.common.exception.BusinessException;
+import com.contentgenius.common.exception.ErrorCode;
+import com.contentgenius.common.result.Result;
+import com.contentgenius.agent.dto.UserLevelDto;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.concurrent.TimeUnit;
+
+
+@Service
+@RequiredArgsConstructor
+public class RedisQueueService {
+
+    private final GetLevel getLevel;
+    private final StringRedisTemplate stringRedisTemplate;
+
+    private static final String KEY_PREFIX = "chat:";
+    private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+
+    public void incrementChatQuota(long userId) {
+        //拿次数
+        int dailyLimit = resolveDailyLimit(loadMemberLevel());
+
+        String redisKey = buildChatQuotaKey(userId);
+        Long usedCount = stringRedisTemplate.opsForValue().increment(redisKey);
+        if (usedCount == null) {
+            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "额度服务暂时不可用");
+        }
+        if (usedCount == 1L) {
+            stringRedisTemplate.expire(redisKey, secondsUntilEndOfDay(), TimeUnit.SECONDS);
+        }
+        //比较
+        if (usedCount > dailyLimit) {
+            throw new BusinessException(
+                    ErrorCode.FORBIDDEN,
+                    "今日免费额度已用完（" + dailyLimit + " 次/天）"
+            );
+        }
+    }
+
+   //拿等级
+    private Integer loadMemberLevel() {
+        Result<UserLevelDto> result = getLevel.me();
+        if (result == null || result.getData() == null) {
+            return 0;
+        }
+        return result.getData().getMemberLevel();
+    }
+
+    //按等级赋值使用次数
+    private int resolveDailyLimit(Integer memberLevel) {
+        int level = memberLevel == null ? 0 : memberLevel;
+        return switch (level) {
+            case 0 -> 0;
+            case 1 -> 3;
+            default -> 10;
+        };
+    }
+
+    private String buildChatQuotaKey(long userId) {
+        String day = LocalDate.now().format(DAY_FORMAT);
+        return KEY_PREFIX + userId + ":" + day;
+    }
+
+    private static long secondsUntilEndOfDay() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime tomorrowStart = now.toLocalDate().plusDays(1).atStartOfDay();
+        return Math.max(1L, ChronoUnit.SECONDS.between(now, tomorrowStart));
+    }
+}
