@@ -1,139 +1,99 @@
 package com.contentgenius.agent.config;
 
-
-
 import org.springframework.stereotype.Component;
-
 import org.springframework.util.StringUtils;
 
+import java.util.Map;
 
-
-/**
-
- * 将平台风格（prompt_hint）、用户主题拼成 System / User Prompt，供 ArticleWriter 使用。
-
- */
 
 @Component
-
 public class PromptBuilder {
 
-
-
-    /** 所有平台共用的写稿规则（输出格式、禁止闲聊等） */
-
-    private static final String BASE_INSTRUCTION = """
-
+    /** Nacos 未配置时的全局写稿规则兜底 */
+    private static final String DEFAULT_BASE_INSTRUCTION = """
             你是自媒体内容创作助手。请根据平台写法与用户主题撰写一篇可直接发布的初稿。
-
             输出格式：先给一行标题，再写正文；不要解释你是 AI，不要输出与成稿无关的闲聊或步骤说明。
-
             """;
 
-
-
-    /** content 拉模板失败时，小红书默认 hint（与 04-content-seed.sql 一致） */
-
+    /** 平台提示词兜底（Nacos 与 DB 都缺失时生效） */
     private static final String DEFAULT_HINT_XHS = "口语化、分段、适量 emoji，种草笔记风格";
-
-    /** content 拉模板失败时，公众号默认 hint */
-
     private static final String DEFAULT_HINT_WECHAT = "标题吸引人、小标题清晰、结尾引导互动，公众号长文风格";
 
-
-
-    public String buildSystemPrompt(String platform, String promptHint) {
-
-        return buildSystemPrompt(platform, promptHint, null);
-
+    private final PromptProperties promptProperties;//引入nacos配置
+//构造方法注入
+    public PromptBuilder(PromptProperties promptProperties) {
+        this.promptProperties = promptProperties;
     }
 
-
+    public String buildSystemPrompt(String platform, String promptHint) {
+        return buildSystemPrompt(platform, promptHint, null);
+    }
 
     /**
-
-     * @param platform   如 xiaohongshu
-
-     * @param promptHint 来自 template 表，可为 null
-
-     * @param ragContext 6/17+ 历史稿片段，6/9 传 null
-
+     * @param platform   模板名称
+     * @param promptHint 表中写法
+     * @param ragContext 预留后续向量
      */
-
     public String buildSystemPrompt(String platform, String promptHint, String ragContext) {
+        String platformLine = StringUtils.hasText(platform) ? "目标平台：" + platform.trim() + "。\n" : "";
+        String styleLine = "平台写法要求：" + resolvePromptHint(platform, promptHint) + "。\n";//获取写法
 
-        String platformLine = StringUtils.hasText(platform)
+        StringBuilder sb = new StringBuilder(resolveBaseInstruction())//加默认模板
+                .append('\n')
+                .append(platformLine)//添加平台
+                .append(styleLine);//添加写法
 
-                ? "目标平台：" + platform.trim() + "。\n"
-
-                : "";
-
-        String styleLine = "平台写法要求：" + resolvePromptHint(platform, promptHint) + "。\n";
-
-
-
-        StringBuilder sb = new StringBuilder(BASE_INSTRUCTION).append('\n').append(platformLine).append(styleLine);
-
-        if (StringUtils.hasText(ragContext)) {
-
+        if (StringUtils.hasText(ragContext)) {//后续rag
             sb.append("\n可参考以下历史稿件片段（勿照抄，仅作风格与事实参考）：\n")
-
                     .append(ragContext.trim())
-
                     .append('\n');
-
         }
 
         return sb.toString().trim();
-
     }
-
-
 
     /** 拼进 UserMessage，对应用户本次 topic */
-
     public String buildUserPrompt(String topic) {
-
         if (!StringUtils.hasText(topic)) {
-
             throw new IllegalArgumentException("创作主题不能为空");
-
         }
-
         return "请围绕以下主题撰写初稿：\n" + topic.trim();
-
     }
 
-
-
-    /** 优先用库表 prompt_hint，否则按 platform 选内置默认 */
-
+    /**
+     * 选择nacos还是表还是默认
+     */
     private String resolvePromptHint(String platform, String promptHint) {
+        String normalizedPlatform = normalizePlatform(platform);//平台名
+        Map<String, String> nacosPlatformPrompt = promptProperties.getPlatform();//获取nacos配置
+
+        if (nacosPlatformPrompt != null) {//判空
+            String fromNacos = nacosPlatformPrompt.get(normalizedPlatform);//获取value
+            if (!StringUtils.hasText(fromNacos) && StringUtils.hasText(platform)) {
+                fromNacos = nacosPlatformPrompt.get(platform.trim());
+            }
+            if (StringUtils.hasText(fromNacos)) {
+                return fromNacos.trim();//nacos配置优先
+            }
+        }
 
         if (StringUtils.hasText(promptHint)) {
-
-            return promptHint.trim();
-
+            return promptHint.trim();//表配置
         }
 
-        if (!StringUtils.hasText(platform)) {
-
-            return DEFAULT_HINT_XHS;
-
-        }
-
-        return switch (platform.trim().toLowerCase()) {
-
+        return switch (normalizedPlatform) {//默认
             case "wechat", "公众号" -> DEFAULT_HINT_WECHAT;
-
             case "xiaohongshu", "xhs", "小红书" -> DEFAULT_HINT_XHS;
-
             default -> DEFAULT_HINT_XHS;
-
         };
-
     }
 
+    private String resolveBaseInstruction() {
+        String fromNacos = promptProperties.getBaseInstruction();//默认配置
+        return StringUtils.hasText(fromNacos) ? fromNacos.trim() : DEFAULT_BASE_INSTRUCTION;
+    }
+
+    private static String normalizePlatform(String platform) {
+        return StringUtils.hasText(platform) ? platform.trim().toLowerCase() : "";
+    }
 }
-
-

@@ -22,7 +22,8 @@ import java.time.Duration;
 @EnableConfigurationProperties({
         QwenMaxProperties.class,
         QwenPlusProperties.class,
-        QwenTurboProperties.class
+        QwenTurboProperties.class,
+        PromptProperties.class
 })
 public class LLMConfig {
 

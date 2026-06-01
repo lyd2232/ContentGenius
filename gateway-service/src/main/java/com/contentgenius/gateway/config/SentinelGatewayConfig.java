@@ -18,10 +18,14 @@ public class SentinelGatewayConfig {
 
     @PostConstruct
     public void init() {
-        BlockRequestHandler blockHandler = (ServerWebExchange exchange, Throwable ex) ->
-                ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
+        BlockRequestHandler blockHandler = new BlockRequestHandler() {
+            @Override
+            public Mono<ServerResponse> handleRequest(ServerWebExchange exchange, Throwable ex) {
+                return ServerResponse.status(HttpStatus.TOO_MANY_REQUESTS)
                         .contentType(MediaType.APPLICATION_JSON)
                         .bodyValue("{\"code\":429,\"message\":\"请求过于频繁，请稍后再试\"}");
+            }
+        };
         GatewayCallbackManager.setBlockHandler(blockHandler);
     }
 }
