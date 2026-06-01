@@ -1,5 +1,6 @@
 package com.contentgenius.agent.service.impl;
 
+import com.contentgenius.agent.config.RedisQueueService;
 import com.contentgenius.agent.core.ContentGeniusAgent;
 import com.contentgenius.agent.dto.AgentChatRequest;
 import com.contentgenius.agent.dto.AgentChatResponse;
@@ -8,6 +9,7 @@ import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.github.houbb.sensitive.word.core.SensitiveWordHelper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -17,6 +19,7 @@ import reactor.core.publisher.Flux;
 @Service
 @RequiredArgsConstructor
 public class AgentChatServiceImpl implements AgentChatService {
+    private final RedisQueueService redisQueueService;//注入redis实现计数器
 
     private final ContentGeniusAgent contentGeniusAgent;
 
@@ -34,7 +37,11 @@ public class AgentChatServiceImpl implements AgentChatService {
                     ErrorCode.CONTENT_CONTAINS_SENSITIVE_WORDS,
                     "内容包含敏感词，请修改后重试。参考：" + replacedText
             );
+
         }
+        Long userId = (Long) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.chat(
                 request.getProjectId(), topic, request.getPlatform());
     }
@@ -49,6 +56,9 @@ public class AgentChatServiceImpl implements AgentChatService {
                     "内容包含敏感词，请修改后重试。参考：" + replacedText
             );
         }
+        Long userId = (Long) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.streamChat(
                 request.getProjectId(), request.getTopic(), request.getPlatform());
     }

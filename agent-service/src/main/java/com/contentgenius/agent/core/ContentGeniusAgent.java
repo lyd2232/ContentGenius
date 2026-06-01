@@ -15,7 +15,6 @@ import com.contentgenius.agent.writer.ArticleWriter;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.common.result.Result;
-import com.github.houbb.sensitive.word.core.SensitiveWordHelper;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
@@ -268,27 +267,45 @@ public class ContentGeniusAgent {
         return loadPromptHint(platform);
     }
 
+    /**
+     * 仅当 topic 明确需要联网时才检索；搜索成功后才扣 search 额度。
+     */
     private String loadWebContext(String topic) {
         if (!StringUtils.hasText(topic)) {
             return null;
         }
+        // 普通写稿 topic 不触发联网，也不扣搜索额度
+        if (!needsWebSearch(topic)) {
+            log.debug("topic 未命中联网意图，跳过 WebSearch topic={}", topic);
+            return null;
+        }
         try {
             log.info("开始联网检索 topic={}", topic);
-            String summary = chatAssistant.chat(topic.trim());//联网搜索
+            String summary = chatAssistant.chat(topic.trim());
             if (!StringUtils.hasText(summary)) {
                 log.warn("联网检索返回为空 topic={}", topic);
                 return null;
             }
-            String normalized = summary.trim();//去除空格
-            String webContext = normalized.length() <= WEB_CONTEXT_MAX_LEN//截取长度
+            String normalized = summary.trim();
+            String webContext = normalized.length() <= WEB_CONTEXT_MAX_LEN
                     ? normalized
                     : normalized.substring(0, WEB_CONTEXT_MAX_LEN);
             log.info("联网检索成功 topic={} contextLength={}", topic, webContext.length());
             return webContext;
+        } catch (BusinessException ex) {
+            // 搜索额度用尽等业务异常必须抛出，不能静默降级
+            throw ex;
         } catch (Exception ex) {
             log.warn("联网搜索失败，继续使用本地提示词 topic={}: {}", topic, ex.getMessage());
             return null;
         }
+    }
+
+    /** topic 含联网意图关键词时才走 Tavily */
+    private static boolean needsWebSearch(String topic) {
+        String t = topic.trim();
+        return t.contains("搜") || t.contains("联网") || t.contains("网上")
+                || t.contains("搜索") || t.contains("查一下") || t.contains("最新");
     }
 
     /**
