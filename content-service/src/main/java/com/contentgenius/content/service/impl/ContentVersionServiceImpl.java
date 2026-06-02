@@ -5,10 +5,15 @@ import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.content.dto.CreateContentVersionRequest;
 import com.contentgenius.content.dto.UpdateContentVersionRequest;
+import com.contentgenius.common.rag.RagIndexJob;
 import com.contentgenius.content.entity.ContentVersion;
+import com.contentgenius.content.entity.Project;
 import com.contentgenius.content.mapper.ContentVersionMapper;
+import com.contentgenius.content.rag.RedisQueueService;
 import com.contentgenius.content.service.ContentVersionService;
 import com.contentgenius.content.service.ProjectService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -20,6 +25,9 @@ import java.util.Set;
  */
 @Service
 public class ContentVersionServiceImpl implements ContentVersionService {
+
+    private static final Logger log = LoggerFactory.getLogger(ContentVersionServiceImpl.class);
+    private static final String DEFAULT_PLATFORM = "xiaohongshu";
 
     /** 草稿 */
     private static final int STATUS_DRAFT = 0;
@@ -34,10 +42,14 @@ public class ContentVersionServiceImpl implements ContentVersionService {
     /** 用于校验 project 归属（getById 内含 owner 检查） */
     private final ProjectService projectService;
     private final ContentVersionMapper contentVersionMapper;
+    private final RedisQueueService redisQueueService;
 
-    public ContentVersionServiceImpl(ProjectService projectService, ContentVersionMapper contentVersionMapper) {
+    public ContentVersionServiceImpl(ProjectService projectService,
+                                     ContentVersionMapper contentVersionMapper,
+                                     RedisQueueService redisQueueService) {
         this.projectService = projectService;
         this.contentVersionMapper = contentVersionMapper;
+        this.redisQueueService = redisQueueService;
     }
 
     @Override
@@ -74,6 +86,7 @@ public class ContentVersionServiceImpl implements ContentVersionService {
     @Override
     public ContentVersion update(Long id, UpdateContentVersionRequest request) {
         ContentVersion version = requireVersion(id);
+        int previousStatus = version.getStatus() == null ? STATUS_DRAFT : version.getStatus();
         if (StringUtils.hasText(request.getTitle())) {
             version.setTitle(request.getTitle());
         }
@@ -89,8 +102,31 @@ public class ContentVersionServiceImpl implements ContentVersionService {
             }
             version.setStatus(request.getStatus());
         }
+
         contentVersionMapper.updateById(version);
+        if (version.getStatus() == STATUS_FINALIZED && previousStatus != STATUS_FINALIZED) {
+            enqueueRagIndex(version);
+        }
         return version;
+    }
+
+    /** 定稿成功后：组装 platform / userId / content 并入 Redis，供 agent 写入 Qdrant */
+    private void enqueueRagIndex(ContentVersion version) {
+        if (!StringUtils.hasText(version.getContent())) {
+            log.warn("定稿版本正文为空，跳过 RAG 入队 versionId={}", version.getId());
+            return;
+        }
+        Project project = projectService.getById(version.getProjectId());
+        String platform = StringUtils.hasText(version.getPlatform())
+                ? version.getPlatform().trim()
+                : DEFAULT_PLATFORM;
+        RagIndexJob job = new RagIndexJob(
+                version.getId(),
+                project.getUserId(),
+                platform,
+                version.getContent());
+        redisQueueService.enqueue(job);
+        log.info("RAG 入队 versionId={} userId={} platform={}", job.getVersionId(), job.getUserId(), job.getPlatform());
     }
 
     /**
