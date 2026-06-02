@@ -19,33 +19,40 @@ public class PromptBuilder {
     private static final String DEFAULT_HINT_XHS = "口语化、分段、适量 emoji，种草笔记风格";
     private static final String DEFAULT_HINT_WECHAT = "标题吸引人、小标题清晰、结尾引导互动，公众号长文风格";
 
-    private final PromptProperties promptProperties;//引入nacos配置
-//构造方法注入
+    private final PromptProperties promptProperties;
+
     public PromptBuilder(PromptProperties promptProperties) {
         this.promptProperties = promptProperties;
     }
 
     public String buildSystemPrompt(String platform, String promptHint) {
-        return buildSystemPrompt(platform, promptHint, null);
+        return buildSystemPrompt(platform, promptHint, null, null);
     }
 
     /**
-     * @param platform   模板名称
-     * @param promptHint 表中写法
-     * @param ragContext 预留后续向量
+     * @param platform   目标平台
+     * @param promptHint 模板表
+     * @param webContext 联网检索摘要
+     * @param ragContext 向量库检索到的历史稿片段
      */
-    public String buildSystemPrompt(String platform, String promptHint, String ragContext) {
+    public String buildSystemPrompt(String platform, String promptHint, String webContext, String ragContext) {
         String platformLine = StringUtils.hasText(platform) ? "目标平台：" + platform.trim() + "。\n" : "";
-        String styleLine = "平台写法要求：" + resolvePromptHint(platform, promptHint) + "。\n";//获取写法
+        String styleLine = "平台写法要求：" + resolvePromptHint(platform, promptHint) + "。\n";
 
-        StringBuilder sb = new StringBuilder(resolveBaseInstruction())//加默认模板
+        StringBuilder sb = new StringBuilder(resolveBaseInstruction())
                 .append('\n')
-                .append(platformLine)//添加平台
-                .append(styleLine);//添加写法
+                .append(platformLine)
+                .append(styleLine);
 
-        if (StringUtils.hasText(ragContext)) {//后续rag
-            sb.append("\n可参考以下联网检索摘要（含来源链接，注意时效并自行核实，勿照抄）：\n")
+        if (StringUtils.hasText(ragContext)) {
+            sb.append("\n可参考以下历史稿片段（同平台、同作者风格，仅供语气与结构参考，勿照抄）：\n")
                     .append(ragContext.trim())
+                    .append('\n');
+        }
+
+        if (StringUtils.hasText(webContext)) {
+            sb.append("\n可参考以下联网检索摘要（含来源链接，注意时效并自行核实，勿照抄）：\n")
+                    .append(webContext.trim())
                     .append('\n')
                     .append("""
                             
@@ -87,24 +94,24 @@ public class PromptBuilder {
      * 选择nacos还是表还是默认
      */
     private String resolvePromptHint(String platform, String promptHint) {
-        String normalizedPlatform = normalizePlatform(platform);//平台名
-        Map<String, String> nacosPlatformPrompt = promptProperties.getPlatform();//获取nacos配置
+        String normalizedPlatform = normalizePlatform(platform);
+        Map<String, String> nacosPlatformPrompt = promptProperties.getPlatform();
 
-        if (nacosPlatformPrompt != null) {//判空
-            String fromNacos = nacosPlatformPrompt.get(normalizedPlatform);//获取value
+        if (nacosPlatformPrompt != null) {
+            String fromNacos = nacosPlatformPrompt.get(normalizedPlatform);
             if (!StringUtils.hasText(fromNacos) && StringUtils.hasText(platform)) {
                 fromNacos = nacosPlatformPrompt.get(platform.trim());
             }
             if (StringUtils.hasText(fromNacos)) {
-                return fromNacos.trim();//nacos配置优先
+                return fromNacos.trim();
             }
         }
 
         if (StringUtils.hasText(promptHint)) {
-            return promptHint.trim();//表配置
+            return promptHint.trim();
         }
 
-        return switch (normalizedPlatform) {//默认
+        return switch (normalizedPlatform) {
             case "wechat", "公众号" -> DEFAULT_HINT_WECHAT;
             case "xiaohongshu", "xhs", "小红书" -> DEFAULT_HINT_XHS;
             default -> DEFAULT_HINT_XHS;
@@ -112,7 +119,7 @@ public class PromptBuilder {
     }
 
     private String resolveBaseInstruction() {
-        String fromNacos = promptProperties.getBaseInstruction();//默认配置
+        String fromNacos = promptProperties.getBaseInstruction();
         return StringUtils.hasText(fromNacos) ? fromNacos.trim() : DEFAULT_BASE_INSTRUCTION;
     }
 

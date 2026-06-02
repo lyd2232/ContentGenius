@@ -24,7 +24,9 @@ import java.time.Duration;
         QwenPlusProperties.class,
         QwenTurboProperties.class,
         PromptProperties.class,
-        WebSearchProperties.class
+        WebSearchProperties.class,
+        QdrantProperties.class,
+        EmbeddingProperties.class
 })
 public class LLMConfig {
 

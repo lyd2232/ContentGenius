@@ -4,6 +4,7 @@ import com.contentgenius.agent.client.ContentTemplateClient;
 import com.contentgenius.agent.client.Versions;
 import com.contentgenius.agent.config.HotTopicSearcher;
 import com.contentgenius.agent.config.PromptBuilder;
+import com.contentgenius.agent.config.QdrantStorage;
 import com.contentgenius.agent.dto.AgentChatResponse;
 import com.contentgenius.agent.dto.ContentVersionDto;
 import com.contentgenius.agent.dto.TemplateDto;
@@ -16,10 +17,12 @@ import com.contentgenius.agent.writer.ArticleWriter;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.common.result.Result;
+import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -31,6 +34,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * 写稿编排核心：拉 template → 拼 Prompt → 调 @AiService 写稿 → Feign 存 content_version。
@@ -55,6 +59,8 @@ public class ContentGeniusAgent {
     private final ArticleWriter articleWriter;
     //联网检索助手
     private final HotTopicSearcher hotTopicSearcher;
+    //向量
+    private final QdrantStorage qdrantStorage;
 
 
 
@@ -70,10 +76,10 @@ public class ContentGeniusAgent {
         } else {
             webContext = null;
         }
+        String ragContext = resolveRagContext(resolvedPlatform, topic);
 
-
-        // 构建stream和user提示
-        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, webContext);
+        String systemPrompt = promptBuilder.buildSystemPrompt(
+                resolvedPlatform, promptHint, webContext, ragContext);
 
         String userPrompt = promptBuilder.buildUserPrompt(topic);
         String authorization = currentAuthorizationHeader();
@@ -101,8 +107,10 @@ public class ContentGeniusAgent {
             webContext = null;
         }
 
-        // 3) 组装 System 提示词（平台规则 + 模板 hint）
-        String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, webContext);
+        String ragContext = resolveRagContext(resolvedPlatform, topic);
+
+        String systemPrompt = promptBuilder.buildSystemPrompt(
+                resolvedPlatform, promptHint, webContext, ragContext);
         // 4) 组装 User 提示词（用户本次主题）
         String userPrompt = promptBuilder.buildUserPrompt(topic);
         // 5) 提前读取 Authorization（后续切线程后 RequestContext 可能拿不到）
@@ -276,6 +284,21 @@ public class ContentGeniusAgent {
             return null;
         }
         return loadPromptHint(platform);
+    }
+
+    /** 从 Qdrant 检索当前用户、当前平台下的历史稿，拼成 RAG 上下文 */
+    private String resolveRagContext(String platform, String topic) {
+        Long userId = (Long) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        List<TextSegment> segments = qdrantStorage.search(platform, userId, topic);
+        if (segments == null || segments.isEmpty()) {
+            return null;
+        }
+        String joined = segments.stream()
+                .map(TextSegment::text)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining("\n---\n"));
+        return StringUtils.hasText(joined) ? joined : null;
     }
 
 
