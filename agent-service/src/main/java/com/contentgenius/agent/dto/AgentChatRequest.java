@@ -26,4 +26,6 @@ public class AgentChatRequest {
      */
     @Size(max = 32, message = "平台标识最多 32 个字符")
     private String platform;
+
+    Boolean isopen;
 }

@@ -2,6 +2,7 @@ package com.contentgenius.agent.core;
 
 import com.contentgenius.agent.client.ContentTemplateClient;
 import com.contentgenius.agent.client.Versions;
+import com.contentgenius.agent.config.HotTopicSearcher;
 import com.contentgenius.agent.config.PromptBuilder;
 import com.contentgenius.agent.dto.AgentChatResponse;
 import com.contentgenius.agent.dto.ContentVersionDto;
@@ -53,17 +54,23 @@ public class ContentGeniusAgent {
     //写稿
     private final ArticleWriter articleWriter;
     //联网检索助手
-    private final ChatAssistant chatAssistant;
+    private final HotTopicSearcher hotTopicSearcher;
 
 
-    public AgentChatResponse chat(Long projectId, String topic, String platform) {
+
+    public AgentChatResponse chat(Long projectId, String topic, String platform,Boolean isopen) {
         // platform 为空时默认小红书，与 template 种子一致
         String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
 
         // Nacos 命中时直接使用配置，避免多余查库与误告警
         String promptHint = resolvePromptHintByPriority(resolvedPlatform);
-        // 联网检索主题上下文（失败时自动降级为 null）
-        String webContext = loadWebContext(topic);
+        String webContext;
+        if (Boolean.TRUE.equals(isopen)) {
+            webContext = hotTopicSearcher.search(topic);
+        } else {
+            webContext = null;
+        }
+
 
         // 构建stream和user提示
         String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, webContext);
@@ -81,14 +88,18 @@ public class ContentGeniusAgent {
      * TokenStream 真流式：
      * <p>onPartialResponse 推 token，onCompleteResponse 落库并发 done，onError 处理 fallback。
      */
-    public Flux<AgentChatResponse> streamChat(Long projectId, String topic, String platform) {
+    public Flux<AgentChatResponse> streamChat(Long projectId, String topic, String platform,Boolean isopen) {
         // 1) 规范化平台参数：空值时用默认平台，避免后续 prompt/null 问题
         String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
 
         // 2) Nacos 命中时直接使用配置，未命中再查模板表兜底
         String promptHint = resolvePromptHintByPriority(resolvedPlatform);
-        // 2.1) 联网检索主题上下文
-        String webContext = loadWebContext(topic);
+        String webContext;
+        if (Boolean.TRUE.equals(isopen)) {
+            webContext = hotTopicSearcher.search(topic);
+        } else {
+            webContext = null;
+        }
 
         // 3) 组装 System 提示词（平台规则 + 模板 hint）
         String systemPrompt = promptBuilder.buildSystemPrompt(resolvedPlatform, promptHint, webContext);
@@ -267,46 +278,7 @@ public class ContentGeniusAgent {
         return loadPromptHint(platform);
     }
 
-    /**
-     * 仅当 topic 明确需要联网时才检索；搜索成功后才扣 search 额度。
-     */
-    private String loadWebContext(String topic) {
-        if (!StringUtils.hasText(topic)) {
-            return null;
-        }
-        // 普通写稿 topic 不触发联网，也不扣搜索额度
-        if (!needsWebSearch(topic)) {
-            log.debug("topic 未命中联网意图，跳过 WebSearch topic={}", topic);
-            return null;
-        }
-        try {
-            log.info("开始联网检索 topic={}", topic);
-            String summary = chatAssistant.chat(topic.trim());
-            if (!StringUtils.hasText(summary)) {
-                log.warn("联网检索返回为空 topic={}", topic);
-                return null;
-            }
-            String normalized = summary.trim();
-            String webContext = normalized.length() <= WEB_CONTEXT_MAX_LEN
-                    ? normalized
-                    : normalized.substring(0, WEB_CONTEXT_MAX_LEN);
-            log.info("联网检索成功 topic={} contextLength={}", topic, webContext.length());
-            return webContext;
-        } catch (BusinessException ex) {
-            // 搜索额度用尽等业务异常必须抛出，不能静默降级
-            throw ex;
-        } catch (Exception ex) {
-            log.warn("联网搜索失败，继续使用本地提示词 topic={}: {}", topic, ex.getMessage());
-            return null;
-        }
-    }
 
-    /** topic 含联网意图关键词时才走 Tavily */
-    private static boolean needsWebSearch(String topic) {
-        String t = topic.trim();
-        return t.contains("搜") || t.contains("联网") || t.contains("网上")
-                || t.contains("搜索") || t.contains("查一下") || t.contains("最新");
-    }
 
     /**
      * 大模型协调关键点

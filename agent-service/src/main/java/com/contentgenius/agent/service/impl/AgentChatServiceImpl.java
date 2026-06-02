@@ -43,7 +43,7 @@ public class AgentChatServiceImpl implements AgentChatService {
                 .getAuthentication().getPrincipal();
         redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.chat(
-                request.getProjectId(), topic, request.getPlatform());
+                request.getProjectId(), topic, request.getPlatform(), request.getIsopen());
     }
 
     @Override
@@ -60,6 +60,6 @@ public class AgentChatServiceImpl implements AgentChatService {
                 .getAuthentication().getPrincipal();
         redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.streamChat(
-                request.getProjectId(), request.getTopic(), request.getPlatform());
+                request.getProjectId(), request.getTopic(), request.getPlatform(), request.getIsopen());
     }
 }
