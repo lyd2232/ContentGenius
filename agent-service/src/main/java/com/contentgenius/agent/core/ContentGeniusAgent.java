@@ -64,7 +64,7 @@ public class ContentGeniusAgent {
 
 
 
-    public AgentChatResponse chat(Long projectId, String topic, String platform,Boolean isopen) {
+    public AgentChatResponse chat(Long projectId, String topic, String platform, Boolean isopen, Boolean useRag) {
         // platform 为空时默认小红书，与 template 种子一致
         String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
 
@@ -76,7 +76,7 @@ public class ContentGeniusAgent {
         } else {
             webContext = null;
         }
-        String ragContext = resolveRagContext(resolvedPlatform, topic);
+        String ragContext = resolveRagContext(resolvedPlatform, topic, useRag);
 
         String systemPrompt = promptBuilder.buildSystemPrompt(
                 resolvedPlatform, promptHint, webContext, ragContext);
@@ -94,7 +94,8 @@ public class ContentGeniusAgent {
      * TokenStream 真流式：
      * <p>onPartialResponse 推 token，onCompleteResponse 落库并发 done，onError 处理 fallback。
      */
-    public Flux<AgentChatResponse> streamChat(Long projectId, String topic, String platform,Boolean isopen) {
+    public Flux<AgentChatResponse> streamChat(Long projectId, String topic, String platform,
+                                             Boolean isopen, Boolean useRag) {
         // 1) 规范化平台参数：空值时用默认平台，避免后续 prompt/null 问题
         String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
 
@@ -107,7 +108,7 @@ public class ContentGeniusAgent {
             webContext = null;
         }
 
-        String ragContext = resolveRagContext(resolvedPlatform, topic);
+        String ragContext = resolveRagContext(resolvedPlatform, topic, useRag);
 
         String systemPrompt = promptBuilder.buildSystemPrompt(
                 resolvedPlatform, promptHint, webContext, ragContext);
@@ -286,8 +287,11 @@ public class ContentGeniusAgent {
         return loadPromptHint(platform);
     }
 
-    /** 从 Qdrant 检索当前用户、当前平台下的历史稿，拼成 RAG 上下文 */
-    private String resolveRagContext(String platform, String topic) {
+
+    private String resolveRagContext(String platform, String topic, Boolean useRag) {
+        if (!Boolean.TRUE.equals(useRag)) {
+            return null;
+        }
         Long userId = (Long) SecurityContextHolder.getContext()
                 .getAuthentication().getPrincipal();
         List<TextSegment> segments = qdrantStorage.search(platform, userId, topic);
