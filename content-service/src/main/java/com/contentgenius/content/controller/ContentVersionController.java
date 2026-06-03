@@ -6,6 +6,7 @@ import com.contentgenius.content.dto.UpdateContentVersionRequest;
 import com.contentgenius.content.entity.ContentVersion;
 import com.contentgenius.content.service.ContentVersionService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,5 +47,12 @@ public class ContentVersionController {
             @PathVariable Long id,
             @Valid @RequestBody UpdateContentVersionRequest request) {
         return Result.ok(contentVersionService.update(id, request));
+    }
+
+    //删草稿并且删除向量
+    @DeleteMapping("/api/content/versions/{id}")
+    public Result<Void> deleteVersion(@PathVariable Long id) {
+        contentVersionService.deleteVersion(id);
+        return Result.ok();
     }
 }

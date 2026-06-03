@@ -15,4 +15,7 @@ public interface ContentVersionService {
     ContentVersion getById(Long id);
 
     ContentVersion update(Long id, UpdateContentVersionRequest request);
+
+
+    void deleteVersion(Long id);
 }

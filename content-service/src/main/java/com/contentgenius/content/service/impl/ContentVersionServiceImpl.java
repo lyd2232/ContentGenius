@@ -3,7 +3,11 @@ package com.contentgenius.content.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
+import com.contentgenius.common.result.Result;
+import com.contentgenius.content.client.SimSearch;
 import com.contentgenius.content.dto.CreateContentVersionRequest;
+import com.contentgenius.content.dto.RagSimilarityHit;
+import com.contentgenius.content.dto.RagSimilarityRequest;
 import com.contentgenius.content.dto.UpdateContentVersionRequest;
 import com.contentgenius.common.rag.RagIndexJob;
 import com.contentgenius.content.entity.ContentVersion;
@@ -16,6 +20,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.List;
 import java.util.Set;
@@ -25,6 +31,8 @@ import java.util.Set;
  */
 @Service
 public class ContentVersionServiceImpl implements ContentVersionService {
+
+    private final SimSearch simSearch ;
 
     private static final Logger log = LoggerFactory.getLogger(ContentVersionServiceImpl.class);
     private static final String DEFAULT_PLATFORM = "xiaohongshu";
@@ -46,10 +54,12 @@ public class ContentVersionServiceImpl implements ContentVersionService {
 
     public ContentVersionServiceImpl(ProjectService projectService,
                                      ContentVersionMapper contentVersionMapper,
-                                     RedisQueueService redisQueueService) {
+                                     RedisQueueService redisQueueService,
+                                     SimSearch simSearch) {
         this.projectService = projectService;
         this.contentVersionMapper = contentVersionMapper;
         this.redisQueueService = redisQueueService;
+        this.simSearch = simSearch;
     }
 
     @Override
@@ -102,12 +112,60 @@ public class ContentVersionServiceImpl implements ContentVersionService {
             }
             version.setStatus(request.getStatus());
         }
-
         contentVersionMapper.updateById(version);
         if (version.getStatus() == STATUS_FINALIZED && previousStatus != STATUS_FINALIZED) {
-            enqueueRagIndex(version);
+            checkSimilarityOnFinalize(version);//相似度
+            enqueueRagIndex(version);//存向量
         }
         return version;
+    }
+
+    @Override
+    public void deleteVersion(Long id) {
+        requireVersion(id);
+        contentVersionMapper.deleteById(id);
+        deleteVectorQuietly(id);
+        log.info("已删除内容版本 versionId={}", id);
+    }
+
+    private void deleteVectorQuietly(Long versionId) {
+        try {
+            simSearch.deleteVector(currentAuthorizationHeader(), versionId);
+        } catch (Exception e) {
+            log.warn("删除 Qdrant 向量失败 versionId={}: {}", versionId, e.getMessage());
+        }
+    }
+
+    /** 定稿时调用 agent 检查高相似历史稿（≥0.92），仅打日志；后续可写入响应字段 */
+    private void checkSimilarityOnFinalize(ContentVersion version) {
+        if (!StringUtils.hasText(version.getContent())) {
+            return;
+        }
+        //拼参数
+        RagSimilarityRequest req = new RagSimilarityRequest();
+        req.setVersionId(version.getId());
+        req.setContent(version.getContent());
+        req.setPlatform(version.getPlatform());
+        try {
+            //读相似度
+            Result<List<RagSimilarityHit>> result = simSearch.similarity(currentAuthorizationHeader(), req);
+            if (result != null && result.getData() != null && !result.getData().isEmpty()) {
+                RagSimilarityHit top = result.getData().get(0);//获取相似度
+                log.warn("定稿内容与历史稿高度相似 versionId={} similarVersionId={} score={}",
+                        version.getId(), top.getVersionId(), top.getScore());
+            }
+        } catch (Exception e) {
+            log.warn("相似度检查失败 versionId={}: {}", version.getId(), e.getMessage());
+        }
+    }
+//解析token
+    private static String currentAuthorizationHeader() {
+        ServletRequestAttributes attributes =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            return null;
+        }
+        return attributes.getRequest().getHeader("Authorization");
     }
 
     /** 定稿成功后：组装 platform / userId / content 并入 Redis，供 agent 写入 Qdrant */
