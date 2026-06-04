@@ -17,6 +17,9 @@ public class MinioProperties {
     /** 对应 minio.bucket */
     private String bucket;
 
+    /** 每用户最多保留的上传文件数（MinIO 对象），默认 3 */
+    private Integer maxFilesPerUser = 3;
+
     /** 解析桶名：bucket-name 与 bucket 二选一 */
     public String resolvedBucketName() {
         String value = StringUtils.hasText(bucketName) ? bucketName : bucket;
@@ -24,5 +27,9 @@ public class MinioProperties {
             throw new IllegalStateException("Nacos 缺少 minio.bucket 或 minio.bucket-name");
         }
         return value.trim();
+    }
+
+    public int resolvedMaxFilesPerUser() {
+        return maxFilesPerUser != null && maxFilesPerUser > 0 ? maxFilesPerUser : 3;
     }
 }

@@ -28,7 +28,8 @@ import java.time.Duration;
         PromptProperties.class,
         WebSearchProperties.class,
         QdrantProperties.class,
-        EmbeddingProperties.class
+        EmbeddingProperties.class,
+        QwenVision.class
 })
 public class LLMConfig {
 
@@ -70,6 +71,16 @@ public class LLMConfig {
     /** 快速模型，RouteType.FAST 预留 */
     @Bean("qwenTurboChatModel")
     public ChatModel qwenTurboChatModel(QwenTurboProperties props) {
+        return build(props.getEndpoint(), props.getApiKey(), props.getModelName(),
+                props.getTemperature(), props.getMaxTokens());
+    }
+
+    @Bean("qwenVisionChatModel")
+    public ChatModel qwenVisionChatModel(QwenVision props) {
+        if (props.getEndpoint() == null || props.getEndpoint().isBlank()) {
+            throw new IllegalStateException(
+                    "未配置 ai.models.qwen3-vl-plus.endpoint，视觉模型将误连 api.openai.com");
+        }
         return build(props.getEndpoint(), props.getApiKey(), props.getModelName(),
                 props.getTemperature(), props.getMaxTokens());
     }

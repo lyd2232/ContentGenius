@@ -3,6 +3,7 @@ package com.contentgenius.content.controller;
 import com.contentgenius.common.result.Result;
 import com.contentgenius.content.dto.FileUploadResponse;
 import com.contentgenius.content.service.FileStorageService;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,9 +26,15 @@ public class FileController {
         return Result.ok(fileStorageService.upload(file));
     }
 
- //获取文件
     @GetMapping("/url")
     public Result<FileUploadResponse> load(@RequestParam String objectName) {
         return Result.ok(fileStorageService.load(objectName));
+    }
+
+    /** 删除 MinIO 对象（仅能删本人 {userId}/ 下文件） */
+    @DeleteMapping
+    public Result<Void> delete(@RequestParam String objectName) {
+        fileStorageService.delete(objectName);
+        return Result.ok();
     }
 }

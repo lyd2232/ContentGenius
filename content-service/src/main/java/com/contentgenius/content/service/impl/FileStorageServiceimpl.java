@@ -7,11 +7,13 @@ import com.contentgenius.content.config.MinioProperties;
 import com.contentgenius.content.dto.FileUploadResponse;
 import com.contentgenius.content.service.FileStorageService;
 import com.contentgenius.content.util.MinioUtils;
+import io.minio.messages.Item;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -21,7 +23,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FileStorageServiceimpl implements FileStorageService {
 
-    /** 预签名下载链接有效期：7 天（秒） */
+    /** 预签名下载链接有效期：7 天 */
     private static final int PRESIGNED_URL_EXPIRE_SECONDS = 7 * 24 * 60 * 60;
 
     private final MinioUtils minioUtils;
@@ -32,8 +34,8 @@ public class FileStorageServiceimpl implements FileStorageService {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "上传文件不能为空");
         }
-        // 从 Nacos 解析桶名（支持 bucket / bucket-name）
         String bucketName = minioProperties.resolvedBucketName();
+        assertUnderFileQuota(bucketName);
 
         // 对象键：{userId}/{uuid}-{文件名}
         String objectName = buildObjectName(file.getOriginalFilename());
@@ -66,6 +68,20 @@ public class FileStorageServiceimpl implements FileStorageService {
         return new FileUploadResponse(objectName, url, null, null);
     }
 
+    @Override
+    public void delete(String objectName) {
+        if (!StringUtils.hasText(objectName)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "文件路径不能为空");
+        }
+        assertOwnedObject(objectName.trim());
+
+        String bucketName = minioProperties.resolvedBucketName();
+        if (!minioUtils.isObjectExist(bucketName, objectName)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "文件不存在");
+        }
+        minioUtils.removeFile(bucketName, objectName);
+    }
+
     /**
      * 生成 MinIO 对象名，去掉路径中的目录部分，防止 ../ 类路径穿越。
      */
@@ -87,5 +103,27 @@ public class FileStorageServiceimpl implements FileStorageService {
         if (!objectName.startsWith(prefix)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
+    }
+
+    private void assertUnderFileQuota(String bucketName) {
+        int limit = minioProperties.resolvedMaxFilesPerUser();
+        int count = countUserObjects(bucketName);
+        if (count >= limit) {
+            throw new BusinessException(
+                    ErrorCode.FORBIDDEN,
+                    "最多保留 " + limit + " 个文件，请先删除旧文件后再上传");
+        }
+    }
+
+    private int countUserObjects(String bucketName) {
+        String prefix = CurrentUser.getUserId() + "/";
+        List<Item> items = minioUtils.getAllObjectsByPrefix(bucketName, prefix, false);
+        int count = 0;
+        for (Item item : items) {
+            if (!item.isDir()) {
+                count++;
+            }
+        }
+        return count;
     }
 }
