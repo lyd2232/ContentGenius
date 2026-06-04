@@ -2,6 +2,8 @@ package com.contentgenius.agent.config;
 
 import com.contentgenius.agent.llm.LlmHttpErrorInterceptor;
 import dev.langchain4j.http.client.okhttp.OkHttpClientBuilder;
+import dev.langchain4j.memory.chat.ChatMemoryProvider;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
@@ -29,6 +31,7 @@ import java.time.Duration;
         EmbeddingProperties.class
 })
 public class LLMConfig {
+
 
     // TCP 建连最长等待时间（与 Feign 的 connectTimeout 同理，但只作用于调 DashScope）
     private static final Duration LLM_CONNECT_TIMEOUT = Duration.ofSeconds(15);
@@ -125,6 +128,17 @@ public class LLMConfig {
                 .temperature(temperature != null ? temperature : 0.5)
                 .maxTokens(maxTokens)
                 .timeout(LLM_READ_TIMEOUT)
+                .build();
+    }
+    /**
+     * 会话记忆（进程内）；{@link com.contentgenius.agent.writer.assistant.ReviseChatAssistant} 通过 {@code @MemoryId} 使用。
+     * 后续可改为 {@code .chatMemoryStore(redisChatMemoryStore)} 做 Redis 持久化。
+     */
+    @Bean
+    public ChatMemoryProvider chatMemoryProvider() {
+        return memoryId -> MessageWindowChatMemory.builder()
+                .id(memoryId)
+                .maxMessages(5) // 保留最近5轮对话
                 .build();
     }
 }

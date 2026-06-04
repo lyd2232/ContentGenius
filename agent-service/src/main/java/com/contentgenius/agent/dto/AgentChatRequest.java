@@ -23,7 +23,17 @@ public class AgentChatRequest {
     @Size(max = 32, message = "平台标识最多 32 个字符")
     private String platform;
 
-    Boolean isopen;
+    Boolean isopen;//
 
     Boolean useRag;
+
+    //写稿模式
+    private String mode;
+
+    //多轮改稿的标志性id
+    @Size(max = 64, message = "sessionId 最多 64 个字符")
+    private String sessionId;
+
+    /** 多轮记忆 id，由前端传入 */
+    private Integer memoryId;
 }

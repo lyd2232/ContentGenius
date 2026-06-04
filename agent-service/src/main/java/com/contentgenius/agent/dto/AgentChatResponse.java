@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
  */
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
+
 public class AgentChatResponse {
 
     /** 大模型生成的完整草稿（含标题 + 正文） */
@@ -23,4 +23,22 @@ public class AgentChatResponse {
 
     /** 同一 project 下的版本序号 */
     private Integer versionNo;
+
+    /** 本次使用的模式：fast | think */
+    private String mode;
+
+    public AgentChatResponse(String content, String platform, Long versionId, Integer versionNo) {
+        this.content = content;
+        this.platform = platform;
+        this.versionId = versionId;
+        this.versionNo = versionNo;
+    }
+
+    public AgentChatResponse(String content, String platform, Long versionId, Integer versionNo, String mode) {
+        this.content = content;
+        this.platform = platform;
+        this.versionId = versionId;
+        this.versionNo = versionNo;
+        this.mode = mode;
+    }
 }

@@ -4,6 +4,7 @@ import com.contentgenius.agent.config.RedisQueueService;
 import com.contentgenius.agent.core.ContentGeniusAgent;
 import com.contentgenius.agent.dto.AgentChatRequest;
 import com.contentgenius.agent.dto.AgentChatResponse;
+import com.contentgenius.agent.model.ChatMode;
 import com.contentgenius.agent.service.AgentChatService;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
@@ -43,7 +44,9 @@ public class AgentChatServiceImpl implements AgentChatService {
                 .getAuthentication().getPrincipal();
         redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.chat(
-                request.getProjectId(), topic, request.getPlatform(), request.getIsopen(), request.getUseRag());
+                request.getProjectId(), topic, request.getPlatform(),
+                request.getIsopen(), request.getUseRag(), ChatMode.from(request.getMode()),
+                request.getMemoryId());
     }
 
     @Override
@@ -61,6 +64,7 @@ public class AgentChatServiceImpl implements AgentChatService {
         redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.streamChat(
                 request.getProjectId(), request.getTopic(), request.getPlatform(),
-                request.getIsopen(), request.getUseRag());
+                request.getIsopen(), request.getUseRag(), ChatMode.from(request.getMode()),
+                request.getMemoryId());
     }
 }

@@ -28,4 +28,10 @@ public interface ArticleWriterQualityAssistant {
             @V("systemPrompt") String systemPrompt,
             @UserMessage String userPrompt
     );
+
+    @SystemMessage("{{systemPrompt}} 按用户要求重写下文，只输出完整正文。")
+    String rewrite(
+            @V("systemPrompt") String systemPrompt,
+            @UserMessage String userPrompt
+    );
 }

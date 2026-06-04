@@ -27,4 +27,28 @@ public interface ArticleWriterFallbackAssistant {
             @V("systemPrompt") String systemPrompt,
             @UserMessage String userPrompt
     );
+
+    @SystemMessage("{{systemPrompt}} 只输出文章大纲（分段标题+要点），不要写完整正文。")
+    String outline(
+            @V("systemPrompt") String systemPrompt,
+            @UserMessage String userPrompt
+    );
+
+    @SystemMessage("{{systemPrompt}} 保持事实与段落结构不变，按平台风格润色下文。")
+    String style(
+            @V("systemPrompt") String systemPrompt,
+            @UserMessage String draft
+    );
+
+    @SystemMessage("{{systemPrompt}} 根据下文生成1个标题，只输出标题一行。")
+    String title(
+            @V("systemPrompt") String systemPrompt,
+            @UserMessage String content
+    );
+
+    @SystemMessage("{{systemPrompt}} 按用户要求重写下文，只输出完整正文。")
+    String rewrite(
+            @V("systemPrompt") String systemPrompt,
+            @UserMessage String userPrompt
+    );
 }

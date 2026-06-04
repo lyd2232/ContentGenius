@@ -5,15 +5,18 @@ import com.contentgenius.agent.client.Versions;
 import com.contentgenius.agent.config.HotTopicSearcher;
 import com.contentgenius.agent.config.PromptBuilder;
 import com.contentgenius.agent.config.QdrantStorage;
+import com.contentgenius.agent.config.RedisQueueService;
 import com.contentgenius.agent.dto.AgentChatResponse;
 import com.contentgenius.agent.dto.ContentVersionDto;
 import com.contentgenius.agent.dto.TemplateDto;
 import com.contentgenius.agent.dto.VersionRequest;
 import com.contentgenius.agent.llm.LlmApiException;
 import com.contentgenius.agent.llm.LlmErrorClassifier;
+import com.contentgenius.agent.model.ChatMode;
 import com.contentgenius.agent.model.RouteType;
-import com.contentgenius.agent.tools.ChatAssistant;
 import com.contentgenius.agent.writer.ArticleWriter;
+import com.contentgenius.agent.writer.SmartRouter;
+import com.contentgenius.agent.writer.SmartRouter.WriteIntent;
 import com.contentgenius.common.exception.BusinessException;
 import com.contentgenius.common.exception.ErrorCode;
 import com.contentgenius.common.result.Result;
@@ -21,6 +24,7 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.TokenStream;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -61,61 +65,47 @@ public class ContentGeniusAgent {
     private final HotTopicSearcher hotTopicSearcher;
     //向量
     private final QdrantStorage qdrantStorage;
+    //路由
+    private final SmartRouter smartRouter;
+    //redis记忆
+    private final RedisQueueService redisQueueService;
+//chat模式改写
+    public AgentChatResponse chat(Long projectId, String topic, String platform,
+                                  Boolean isopen, Boolean useRag, ChatMode mode, Integer memoryId) {
+        //先拼一套提示词
+        ChatContext ctx = buildChatContext(projectId, topic, platform, isopen, useRag, mode, memoryId);
+        //选择模式
+        ArticleDraft draft = ctx.getMode() == ChatMode.THINK
+                ? executeThinkSync(ctx)
+                : executeFastSync(ctx);
+        //存草稿
+        ContentVersionDto saved = saveVersion(
+                ctx.getProjectId(), ctx.getTopic(), draft.getContent(),
+                ctx.getPlatform(), ctx.getAuthorization(), draft.getTitle());
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        redisQueueService.loadmemoryid(
+                memoryId != null ? String.valueOf(memoryId) : null,
+                String.valueOf(userId),
+                saved.getContent());
 
-
-
-    public AgentChatResponse chat(Long projectId, String topic, String platform, Boolean isopen, Boolean useRag) {
-        // platform 为空时默认小红书，与 template 种子一致
-        String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
-
-        // Nacos 命中时直接使用配置，避免多余查库与误告警
-        String promptHint = resolvePromptHintByPriority(resolvedPlatform);
-        String webContext;
-        if (Boolean.TRUE.equals(isopen)) {
-            webContext = hotTopicSearcher.search(topic);
-        } else {
-            webContext = null;
-        }
-        String ragContext = resolveRagContext(resolvedPlatform, topic, useRag);
-
-        String systemPrompt = promptBuilder.buildSystemPrompt(
-                resolvedPlatform, promptHint, webContext, ragContext);
-
-        String userPrompt = promptBuilder.buildUserPrompt(topic);
-        String authorization = currentAuthorizationHeader();
-
-        //调大模型返回
-        String content = generateWithFallback(systemPrompt, userPrompt);
-//保存
-        ContentVersionDto saved = saveVersion(projectId, topic, content, resolvedPlatform, authorization);
-        return new AgentChatResponse(content, resolvedPlatform, saved.getId(), saved.getVersionNo());
+        //返回结果
+        return new AgentChatResponse(
+                draft.getContent(), ctx.getPlatform(), saved.getId(), saved.getVersionNo(), ctx.getMode().getCode());
     }
     /**
      * TokenStream 真流式：
      * <p>onPartialResponse 推 token，onCompleteResponse 落库并发 done，onError 处理 fallback。
      */
     public Flux<AgentChatResponse> streamChat(Long projectId, String topic, String platform,
-                                             Boolean isopen, Boolean useRag) {
-        // 1) 规范化平台参数：空值时用默认平台，避免后续 prompt/null 问题
-        String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
-
-        // 2) Nacos 命中时直接使用配置，未命中再查模板表兜底
-        String promptHint = resolvePromptHintByPriority(resolvedPlatform);
-        String webContext;
-        if (Boolean.TRUE.equals(isopen)) {
-            webContext = hotTopicSearcher.search(topic);
-        } else {
-            webContext = null;
+                                             Boolean isopen, Boolean useRag, ChatMode mode, Integer memoryId) {
+        ChatContext ctx = buildChatContext(projectId, topic, platform, isopen, useRag, mode, memoryId);
+        if (ctx.getMode() == ChatMode.THINK) {
+            log.info("思考模式完整四步仅支持同步 /chat；流式按快速模式输出正文");
         }
-
-        String ragContext = resolveRagContext(resolvedPlatform, topic, useRag);
-
-        String systemPrompt = promptBuilder.buildSystemPrompt(
-                resolvedPlatform, promptHint, webContext, ragContext);
-        // 4) 组装 User 提示词（用户本次主题）
-        String userPrompt = promptBuilder.buildUserPrompt(topic);
-        // 5) 提前读取 Authorization（后续切线程后 RequestContext 可能拿不到）
-        String authorization = currentAuthorizationHeader();
+        String systemPrompt = ctx.getSystemPrompt();
+        String userPrompt = ctx.getUserPrompt();
+        String resolvedPlatform = ctx.getPlatform();
+        String authorization = ctx.getAuthorization();
         // 6) 是否已输出过任意 token：控制主模型失败时能否“无缝切备胎”
         AtomicBoolean emittedPartial = new AtomicBoolean(false);
         // 7) 累计完整正文：每个 partial 都 append，最终落库用这个字符串
@@ -127,7 +117,8 @@ public class ContentGeniusAgent {
                     public void accept(FluxSink<AgentChatResponse> sink) {
                         // 9) 进入 TokenStream 主逻辑（先主模型，必要时 fallback）
                         streamWithTokenStreamFallback(RouteType.ARTICLE, systemPrompt, userPrompt,
-                                projectId, topic, resolvedPlatform, authorization, fullContent, emittedPartial, sink);
+                                projectId, topic, resolvedPlatform, authorization, ctx.getMode(),
+                                fullContent, emittedPartial, sink);
                     }
                 })
                 // 10) LLM 回调桥接 + Feign 存稿可能阻塞，放到弹性线程池执行
@@ -141,6 +132,7 @@ public class ContentGeniusAgent {
                                                String topic,
                                                String platform,
                                                String authorization,
+                                               ChatMode mode,
                                                StringBuilder fullContent,
                                                AtomicBoolean emittedPartial,
                                                FluxSink<AgentChatResponse> sink) {
@@ -161,7 +153,7 @@ public class ContentGeniusAgent {
                         // B3) 累计正文，供完成后落库
                         fullContent.append(partial);
                         // B4) 把本段 token 作为一条 SSE 消息推给前端
-                        sink.next(new AgentChatResponse(partial, platform, null, null));
+                            sink.next(new AgentChatResponse(partial, platform, null, null, mode.getCode()));
                     }
                 })
                 // C) 完成回调：模型正常输出结束后执行
@@ -174,9 +166,10 @@ public class ContentGeniusAgent {
                         }
                         try {
                             // C2) 用完整正文落库 content_version
-                            ContentVersionDto saved = saveVersion(projectId, topic, fullContent.toString(), platform, authorization);
+                            ContentVersionDto saved = saveVersion(
+                                    projectId, topic, fullContent.toString(), platform, authorization, null);
                             // C3) 发送 done 事件：content 置空，仅携带版本信息
-                            sink.next(new AgentChatResponse("", platform, saved.getId(), saved.getVersionNo()));
+                            sink.next(new AgentChatResponse("", platform, saved.getId(), saved.getVersionNo(), mode.getCode()));
                             // C4) 正常结束 SSE 流
                             sink.complete();
                         } catch (Exception ex) {
@@ -200,7 +193,8 @@ public class ContentGeniusAgent {
                             if (shouldFallback && !emittedPartial.get()) {
                                 // D4) 递归切换到备胎模型，复用同一 sink/fullContent
                                 streamWithTokenStreamFallback(RouteType.FALLBACK, systemPrompt, userPrompt,
-                                        projectId, topic, platform, authorization, fullContent, emittedPartial, sink);
+                                        projectId, topic, platform, authorization, mode,
+                                        fullContent, emittedPartial, sink);
                                 return;
                             }
                             // D5) 不可降级错误：直接转换业务异常返回
@@ -216,12 +210,100 @@ public class ContentGeniusAgent {
                 // E) start() 必须调用：前面只是“注册回调”，这里才真正发起流式请求
                 .start();
     }
+    //拼提示词
+    private ChatContext buildChatContext(Long projectId, String topic, String platform,
+                                         Boolean isopen, Boolean useRag, ChatMode mode,Integer memoryid) {
+        String resolvedPlatform = StringUtils.hasText(platform) ? platform.trim() : "xiaohongshu";
+        String promptHint = resolvePromptHintByPriority(resolvedPlatform);
+        String webContext = Boolean.TRUE.equals(isopen) ? hotTopicSearcher.search(topic) : null;
+        String ragContext = resolveRagContext(resolvedPlatform, topic, useRag);
+        String systemPrompt = promptBuilder.buildSystemPrompt(
+                resolvedPlatform, promptHint, webContext, ragContext);
+        String userPrompt = promptBuilder.buildUserPrompt(topic);
+        String authorization = currentAuthorizationHeader();
+        ChatMode resolvedMode = mode == null ? ChatMode.FAST : mode;
+
+        return new ChatContext(projectId, topic, resolvedPlatform, systemPrompt, userPrompt, authorization, resolvedMode, memoryid);
+    }
+
+    /** 快速模式：一步 write */
+    private ArticleDraft executeFastSync(ChatContext ctx) {
+        String content = articleWriter.writeArticleWithFallback(ctx.getSystemPrompt(), ctx.getUserPrompt());
+        return new ArticleDraft(content, null);
+    }
+
+
+    private ArticleDraft executeThinkSync(ChatContext ctx) {
+        WriteIntent intent = smartRouter.resolveIntent(ctx.getTopic()); // 获取意图枚举
+        log.info("思考模式 intent={} topic={}", intent, ctx.getTopic());
+        if (intent == WriteIntent.OUTLINE) {
+            // 如果是大纲则从头写
+            return executeThinkFullPipeline(ctx);
+        }
+        //如果是重写
+        if (intent == WriteIntent.REWRITE) {
+            String previousDraft = requirePreviousDraft(ctx);
+            String content = articleWriter.rewrite(
+                    ctx.getSystemPrompt(), buildRewritePayload(ctx.getTopic(), previousDraft));
+            return new ArticleDraft(content, null);
+        }
+        //如果是润色
+        if (intent == WriteIntent.STYLE) {
+            String previousDraft = requirePreviousDraft(ctx);
+            String content = articleWriter.style(ctx.getSystemPrompt(), previousDraft);
+            return new ArticleDraft(content, null);
+        }
+        if (intent == WriteIntent.TITLE) {
+            String previousDraft = requirePreviousDraft(ctx);//历史稿件
+            String titleStr = articleWriter.title(ctx.getSystemPrompt(), previousDraft);//拿模板跟稿件拼
+            return new ArticleDraft(previousDraft, titleStr);
+        }
+        return executeThinkFullPipeline(ctx);
+    }
+
+    /** 思考模式 · 从零写：outline → write → style → title */
+    private ArticleDraft executeThinkFullPipeline(ChatContext ctx) {
+        String outlineText = articleWriter.outline(ctx.getSystemPrompt(), ctx.getUserPrompt());
+        String writerUserPrompt = buildWriterUserPrompt(ctx.getTopic(), outlineText);
+        String draft = articleWriter.writeArticleWithFallback(ctx.getSystemPrompt(), writerUserPrompt);
+        String polished = articleWriter.style(ctx.getSystemPrompt(), draft);
+        String titleStr = articleWriter.title(ctx.getSystemPrompt(), polished);
+        return new ArticleDraft(polished, titleStr);
+    }
+
+    private static String buildWriterUserPrompt(String topic, String outlineText) {
+        return "创作主题：" + topic + "\n\n请严格按以下大纲撰写完整正文：\n" + outlineText;
+    }
+
+    private static String buildRewritePayload(String topic, String previousDraft) {
+        return "【原文】\n" + previousDraft + "\n\n【修改要求】\n" + topic;
+    }
+
+    /** 从 Redis 读取上一轮成稿；rewrite / style / title 依赖此内容 */
+    private String requirePreviousDraft(ChatContext ctx) {
+        if (ctx.getMemoryId() == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "多轮改稿需要 memoryId，请先完成首次创作");
+        }
+        Long userId = (Long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();//拿userid
+        String previousDraft = redisQueueService.getMemoryContent(
+                String.valueOf(ctx.getMemoryId()), String.valueOf(userId));//拿历史稿件
+        if (!StringUtils.hasText(previousDraft)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "未找到上一轮稿件，请先完成首次创作");
+        }
+        return previousDraft;
+    }
+
+    @Value
+    private static class ArticleDraft {
+        String content;
+        String title;
+    }
+
 //存稿内部方法
     private ContentVersionDto saveVersion(Long projectId, String topic, String content, String platform,
-                                          String authorization) {
+                                          String authorization, String titleOverride) {
         VersionRequest request = new VersionRequest();
-        //草稿标题
-        request.setTitle(buildTitle(topic));
+        request.setTitle(StringUtils.hasText(titleOverride) ? titleOverride.trim() : buildTitle(topic));
         request.setContent(content);
         request.setPlatform(platform);
         request.setSource(SOURCE_AGENT);
@@ -306,34 +388,6 @@ public class ContentGeniusAgent {
     }
 
 
-
-    /**
-     * 大模型协调关键点
-     */
-    private String generateWithFallback(String systemPrompt, String userPrompt) {
-        try {
-            //默认使用主模型写
-            return articleWriter.write(RouteType.ARTICLE, systemPrompt, userPrompt);
-        } catch (Exception ex) {
-            // 出现异常，抛出异常
-            logLlmFailure("主模型", ex);
-
-            //如果不在可重写的shouldFallback错误，则抛出toBusinessException业务异常
-            if (!LlmErrorClassifier.shouldFallback(ex)) {
-                throw LlmErrorClassifier.toBusinessException(ex);
-            }
-            log.warn("主模型失败，按 HTTP/网络规则切换 fallback 模型");
-        }
-
-        try {
-            //使用备胎模型
-            return articleWriter.write(RouteType.FALLBACK, systemPrompt, userPrompt);
-        } catch (Exception ex) {
-            logLlmFailure("备胎模型", ex);
-            // 备胎也不行直接报错
-            throw new BusinessException(ErrorCode.SERVICE_UNAVAILABLE, "AI 模型暂时不可用，请稍后重试");
-        }
-    }
 
     /**
      * 记录大模型失败详情；若有 {@link LlmApiException} 则打印 HTTP 与 JSON 字段。

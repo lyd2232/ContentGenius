@@ -8,6 +8,7 @@ import com.contentgenius.agent.dto.UserLevelDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -76,5 +77,22 @@ public class RedisQueueService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime tomorrowStart = now.toLocalDate().plusDays(1).atStartOfDay();
         return Math.max(1L, ChronoUnit.SECONDS.between(now, tomorrowStart));
+    }
+
+   //写记忆方法
+    public void loadmemoryid(String memaryid, String userid, String content) {
+        if (!StringUtils.hasText(memaryid) || !StringUtils.hasText(userid)) {
+            return;
+        }
+        String key = "chat:" + memaryid + ":" + userid;
+        if (!StringUtils.hasText(content)) {
+            return;
+        }
+        stringRedisTemplate.opsForValue().set(key, content, 7, TimeUnit.DAYS);
+    }
+    //读记忆方法
+    public String getMemoryContent(String memoryId, String userId) {
+        String key = "chat:" + memoryId + ":" + userId;
+        return stringRedisTemplate.opsForValue().get(key);
     }
 }
