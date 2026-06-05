@@ -27,6 +27,9 @@ public class AgentChatResponse {
     /** 本次使用的模式：fast | think */
     private String mode;
 
+
+    private Integer memoryId;
+
     public AgentChatResponse(String content, String platform, Long versionId, Integer versionNo) {
         this.content = content;
         this.platform = platform;

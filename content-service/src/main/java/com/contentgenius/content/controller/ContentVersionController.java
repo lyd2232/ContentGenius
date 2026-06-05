@@ -49,7 +49,7 @@ public class ContentVersionController {
         return Result.ok(contentVersionService.update(id, request));
     }
 
-    //删草稿并且删除向量
+    /** 删除版本（草稿/定稿均可）；定稿会同步删 Qdrant 向量 */
     @DeleteMapping("/api/content/versions/{id}")
     public Result<Void> deleteVersion(@PathVariable Long id) {
         contentVersionService.deleteVersion(id);

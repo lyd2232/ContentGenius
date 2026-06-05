@@ -74,6 +74,38 @@ public class PromptBuilder {
         return "请围绕以下主题撰写初稿：\n" + topic.trim();
     }
 
+    /** 创作主题稳定；创作要求作为本轮 instruction 拼入首版 UserPrompt */
+    public String buildUserPromptWithRequirement(String creationTheme, String requirement) {
+        if (!StringUtils.hasText(creationTheme)) {
+            throw new IllegalArgumentException("创作主题不能为空");
+        }
+        String theme = creationTheme.trim();
+        if (!StringUtils.hasText(requirement) || requirement.trim().equals(theme)) {
+            return buildUserPrompt(theme);
+        }
+        return buildThemeAndRequirementBlock(theme, requirement.trim(), "创作要求");
+    }
+
+    /** 改稿时拼入「主题 + 修改要求」，避免只传短句导致模型忽略创作要求 */
+    public String buildReviseRequirementBlock(String creationTheme, String instruction) {
+        if (!StringUtils.hasText(instruction)) {
+            if (!StringUtils.hasText(creationTheme)) {
+                return "请优化正文";
+            }
+            return "请围绕创作主题「" + creationTheme.trim() + "」优化正文";
+        }
+        String req = instruction.trim();
+        if (!StringUtils.hasText(creationTheme) || creationTheme.trim().equals(req)) {
+            return req;
+        }
+        return buildThemeAndRequirementBlock(creationTheme.trim(), req, "修改要求（须严格执行）");
+    }
+
+    private static String buildThemeAndRequirementBlock(String theme, String requirement, String requirementLabel) {
+        return "创作主题：" + theme + "\n\n" + requirementLabel + "：\n" + requirement
+                + "\n\n请确保正文完整体现以上要求。";
+    }
+
     /**
      * 判断当前平台是否命中 Nacos 的平台提示词配置。
      */

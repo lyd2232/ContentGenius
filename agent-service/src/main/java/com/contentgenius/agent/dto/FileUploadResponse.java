@@ -1,4 +1,4 @@
-package com.contentgenius.content.dto;
+package com.contentgenius.agent.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -7,18 +7,15 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-    public class FileUploadResponse {
+public class FileUploadResponse {
 
     /** MinIO 对象路径（桶内 key） */
     private String objectName;
 
     /** 访问地址（直链或预签名 URL） */
     private String url;
-//文件类型
+    //文件类型
     private String contentType;
-//文件大小
+    //文件大小
     private Long size;
-
-    /** 原始文件名（列表展示用） */
-    private String displayName;
 }

@@ -1,0 +1,170 @@
+{
+  "info": {
+    "name": "ContentGenius Agent 写稿",
+    "description": "用于区分前端/后端问题。经 Gateway 8080，先登录再调 Agent。\n\n思考模式请用「3 思考-同步首版」与「4 思考-同步改稿」，对比 memoryId 与 intent 日志。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "username", "value": "admin01" },
+    { "key": "password", "value": "你的密码" },
+    { "key": "token", "value": "" },
+    { "key": "projectId", "value": "1" },
+    { "key": "memoryId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0-准备",
+      "item": [
+        {
+          "name": "登录获取 token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.code === 0 && json.data && json.data.token) {",
+                  "  pm.collectionVariables.set('token', json.data.token);",
+                  "  pm.test('登录成功', () => pm.expect(json.code).to.eql(0));",
+                  "} else {",
+                  "  pm.test('登录失败: ' + (json.message || ''), () => false);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/users/login"
+          }
+        },
+        {
+          "name": "我的项目列表",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/content/projects"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1-快速模式",
+      "item": [
+        {
+          "name": "快速-同步写稿",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": {{projectId}},\n  \"topic\": \"夏日防晒种草笔记\",\n  \"platform\": \"xiaohongshu\",\n  \"mode\": \"fast\",\n  \"isopen\": false,\n  \"useRag\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/agent/chat"
+          }
+        },
+        {
+          "name": "快速-流式写稿 SSE",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": {{projectId}},\n  \"topic\": \"夏日防晒种草笔记\",\n  \"platform\": \"xiaohongshu\",\n  \"mode\": \"fast\",\n  \"isopen\": false,\n  \"useRag\": false\n}"
+            },
+            "url": "{{baseUrl}}/api/agent/chat/stream"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2-思考模式（重点）",
+      "item": [
+        {
+          "name": "3 思考-同步首版",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('code=0', () => pm.expect(json.code).to.eql(0));",
+                  "if (json.data) {",
+                  "  pm.test('mode=think', () => pm.expect(json.data.mode).to.eql('think'));",
+                  "  if (json.data.memoryId != null) {",
+                  "    pm.collectionVariables.set('memoryId', String(json.data.memoryId));",
+                  "  } else if (json.data.versionId != null) {",
+                  "    pm.collectionVariables.set('memoryId', String(json.data.versionId));",
+                  "  }",
+                  "  pm.test('有正文', () => pm.expect(json.data.content).to.be.a('string').and.not.empty);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": {{projectId}},\n  \"topic\": \"夏日饮食健康指南\",\n  \"platform\": \"xiaohongshu\",\n  \"mode\": \"think\",\n  \"isopen\": false,\n  \"useRag\": false,\n  \"memoryId\": 1730000001\n}"
+            },
+            "url": "{{baseUrl}}/api/agent/chat",
+            "description": "首版建议带固定 memoryId（如 1730000001），便于改稿。耗时约 1–3 分钟。\n\n成功时 data.mode=think，data.content 有正文，data.memoryId 或 versionId 可给下一步用。"
+          }
+        },
+        {
+          "name": "4 思考-同步改稿（润色）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": {{projectId}},\n  \"topic\": \"语气更轻松一点，保留结构\",\n  \"platform\": \"xiaohongshu\",\n  \"mode\": \"think\",\n  \"isopen\": false,\n  \"useRag\": false,\n  \"memoryId\": {{memoryId}}\n}"
+            },
+            "url": "{{baseUrl}}/api/agent/chat",
+            "description": "必须先跑「3 思考-同步首版」。memoryId 与首版一致。\n\n失败常见：未找到上一轮稿件 → Redis 记忆未写入或 memoryId 不一致。\n\n看 agent 日志：思考模式 intent=STYLE"
+          }
+        },
+        {
+          "name": "5 思考-流式（对比用）",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"projectId\": {{projectId}},\n  \"topic\": \"夏日饮食健康指南\",\n  \"platform\": \"xiaohongshu\",\n  \"mode\": \"think\",\n  \"isopen\": false,\n  \"useRag\": false,\n  \"memoryId\": {{memoryId}}\n}"
+            },
+            "url": "{{baseUrl}}/api/agent/chat/stream",
+            "description": "新版后端 think+stream 也会走四步，最后一条带 versionId。若仍像快速单步，说明 agent 未重启或仍是旧包。"
+          }
+        }
+      ]
+    }
+  ]
+}

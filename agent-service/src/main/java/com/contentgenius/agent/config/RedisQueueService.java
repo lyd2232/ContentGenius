@@ -24,7 +24,12 @@ public class RedisQueueService {
     private final GetLevel getLevel;
     private final StringRedisTemplate stringRedisTemplate;
 
-    private static final String KEY_PREFIX = "chat:";
+    /** 每日额度 key（保持原格式）：chat:{userId}:{yyyyMMdd} */
+    private static final String QUOTA_KEY_PREFIX = "chat:";
+    /** 多轮稿件记忆 key：chat:memory:{memoryId}:{userId}，与额度 key 分离 */
+    private static final String MEMORY_KEY_PREFIX = "chat:memory:";
+    /** 会话创作主题 key：chat:memory:topic:{memoryId}:{userId} */
+    private static final String MEMORY_TOPIC_KEY_PREFIX = "chat:memory:topic:";
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
 
@@ -70,7 +75,7 @@ public class RedisQueueService {
 
     private String buildChatQuotaKey(long userId) {
         String day = LocalDate.now().format(DAY_FORMAT);
-        return KEY_PREFIX + userId + ":" + day;
+        return QUOTA_KEY_PREFIX + userId + ":" + day;
     }
 
     private static long secondsUntilEndOfDay() {
@@ -84,7 +89,7 @@ public class RedisQueueService {
         if (!StringUtils.hasText(memaryid) || !StringUtils.hasText(userid)) {
             return;
         }
-        String key = "chat:" + memaryid + ":" + userid;
+        String key = MEMORY_KEY_PREFIX + memaryid + ":" + userid;
         if (!StringUtils.hasText(content)) {
             return;
         }
@@ -92,7 +97,20 @@ public class RedisQueueService {
     }
     //读记忆方法
     public String getMemoryContent(String memoryId, String userId) {
-        String key = "chat:" + memoryId + ":" + userId;
+        String key = MEMORY_KEY_PREFIX + memoryId + ":" + userId;
+        return stringRedisTemplate.opsForValue().get(key);
+    }
+
+    public void saveMemoryTopic(String memoryId, String userId, String topic) {
+        if (!StringUtils.hasText(memoryId) || !StringUtils.hasText(userId) || !StringUtils.hasText(topic)) {
+            return;
+        }
+        String key = MEMORY_TOPIC_KEY_PREFIX + memoryId + ":" + userId;
+        stringRedisTemplate.opsForValue().set(key, topic.trim(), 7, TimeUnit.DAYS);
+    }
+
+    public String getMemoryTopic(String memoryId, String userId) {
+        String key = MEMORY_TOPIC_KEY_PREFIX + memoryId + ":" + userId;
         return stringRedisTemplate.opsForValue().get(key);
     }
 }

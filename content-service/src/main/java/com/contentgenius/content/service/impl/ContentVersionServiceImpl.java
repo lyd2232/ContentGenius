@@ -182,9 +182,23 @@ public class ContentVersionServiceImpl implements ContentVersionService {
                 version.getId(),
                 project.getUserId(),
                 platform,
-                version.getContent());
+                buildRagIndexText(version));
         redisQueueService.enqueue(job);
-        log.info("RAG 入队 versionId={} userId={} platform={}", job.getVersionId(), job.getUserId(), job.getPlatform());
+        log.info("RAG 入队 versionId={} userId={} platform={} title={}",
+                job.getVersionId(), job.getUserId(), job.getPlatform(), version.getTitle());
+    }
+
+    /** 入库文本带上标题/平台，便于用「旅游攻略」等短主题检索长正文 */
+    private static String buildRagIndexText(ContentVersion version) {
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(version.getTitle())) {
+            sb.append("创作主题：").append(version.getTitle().trim()).append('\n');
+        }
+        if (StringUtils.hasText(version.getPlatform())) {
+            sb.append("平台：").append(version.getPlatform().trim()).append("\n\n");
+        }
+        sb.append(version.getContent().trim());
+        return sb.toString();
     }
 
     /**

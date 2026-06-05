@@ -31,40 +31,36 @@ public class AgentChatServiceImpl implements AgentChatService {
      */
     @Override
     public AgentChatResponse chat(AgentChatRequest request) {
-        String topic = request.getTopic();
-        if (SensitiveWordHelper.contains(topic)) {//判断有没有敏感词
-            String replacedText = SensitiveWordHelper.replace(topic);//替换敏感词
-            throw new BusinessException(
-                    ErrorCode.CONTENT_CONTAINS_SENSITIVE_WORDS,
-                    "内容包含敏感词，请修改后重试。参考：" + replacedText
-            );
-
-        }
+        checkSensitive(request.getCreationTheme(), request.getTopic());
         Long userId = (Long) SecurityContextHolder.getContext()
                 .getAuthentication().getPrincipal();
         redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.chat(
-                request.getProjectId(), topic, request.getPlatform(),
-                request.getIsopen(), request.getUseRag(), ChatMode.from(request.getMode()),
-                request.getMemoryId());
+                request.getProjectId(), request.getCreationTheme(), request.getTopic(),
+                request.getPlatform(), request.getIsopen(), request.getUseRag(),
+                ChatMode.from(request.getMode()), request.getMemoryId(), request.getThinkAction());
     }
 
     @Override
     public Flux<AgentChatResponse> chatStream(AgentChatRequest request) {
-        String topic = request.getTopic();
-        if (SensitiveWordHelper.contains(topic)) {//判断有没有敏感词
-            String replacedText = SensitiveWordHelper.replace(topic);//替换敏感词
-            throw new BusinessException(
-                    ErrorCode.CONTENT_CONTAINS_SENSITIVE_WORDS,
-                    "内容包含敏感词，请修改后重试。参考：" + replacedText
-            );
-        }
+        checkSensitive(request.getCreationTheme(), request.getTopic());
         Long userId = (Long) SecurityContextHolder.getContext()
                 .getAuthentication().getPrincipal();
         redisQueueService.incrementChatQuota(userId);
         return contentGeniusAgent.streamChat(
-                request.getProjectId(), request.getTopic(), request.getPlatform(),
-                request.getIsopen(), request.getUseRag(), ChatMode.from(request.getMode()),
-                request.getMemoryId());
+                request.getProjectId(), request.getCreationTheme(), request.getTopic(),
+                request.getPlatform(), request.getIsopen(), request.getUseRag(),
+                ChatMode.from(request.getMode()), request.getMemoryId(), request.getThinkAction());
+    }
+
+    private static void checkSensitive(String creationTheme, String topic) {
+        for (String text : new String[]{creationTheme, topic}) {
+            if (text != null && SensitiveWordHelper.contains(text)) {
+                throw new BusinessException(
+                        ErrorCode.CONTENT_CONTAINS_SENSITIVE_WORDS,
+                        "内容包含敏感词，请修改后重试。参考：" + SensitiveWordHelper.replace(text)
+                );
+            }
+        }
     }
 }

@@ -38,13 +38,15 @@ public class QdrantStorage {
     private final QdrantClient qdrantClient;
     private final QdrantProperties qdrantProperties;
 
+    private static final double RAG_MIN_SCORE = 0.65;
+
     // 搜索
     public List<TextSegment> search(String platform, Long userId, String topic) {
         Embedding queryEmbedding = embeddingModel.embed(topic).content(); // 获取向量
         EmbeddingSearchRequest request = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
                 .maxResults(5)
-                .minScore(0.7)
+                .minScore(RAG_MIN_SCORE)
                 .filter(langChainFilter(platform, userId)) // 按 userId + platform 过滤
                 .build();
         List<EmbeddingMatch<TextSegment>> matches = embeddingStore.search(request).matches();
@@ -52,7 +54,30 @@ public class QdrantStorage {
         for (EmbeddingMatch<TextSegment> match : matches) {
             segments.add(match.embedded());
         }
+        if (segments.isEmpty()) {
+            logRagMissDiagnostic(platform, userId, topic, queryEmbedding);
+        }
         return segments;
+    }
+
+    /** 未命中时打出最高分，便于区分「没入库」与「分数不够」 */
+    private void logRagMissDiagnostic(String platform, Long userId, String topic, Embedding queryEmbedding) {
+        EmbeddingSearchRequest diag = EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(1)
+                .minScore(0.0)
+                .filter(langChainFilter(platform, userId))
+                .build();
+        List<EmbeddingMatch<TextSegment>> matches = embeddingStore.search(diag).matches();
+        if (matches.isEmpty()) {
+            log.info("RAG 诊断：Qdrant 中无 userId={} platform={} 的已定稿向量（可能未点定稿或入库失败）",
+                    userId, normalizePlatform(platform));
+            return;
+        }
+        EmbeddingMatch<TextSegment> top = matches.get(0);
+        Object versionId = top.embedded().metadata().toMap().get("versionId");
+        log.info("RAG 诊断：ragQuery={} 最高相似分={}（阈值 {}）versionId={}",
+                topic, top.score(), RAG_MIN_SCORE, versionId);
     }
 
     // 相似度检索 0.92

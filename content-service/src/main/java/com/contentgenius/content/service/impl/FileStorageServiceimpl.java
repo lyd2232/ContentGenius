@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,7 +49,29 @@ public class FileStorageServiceimpl implements FileStorageService {
 
         // 返回短期可访问的预签名 URL
         String url = minioUtils.getPresignedObjectUrl(bucketName, objectName, PRESIGNED_URL_EXPIRE_SECONDS);
-        return new FileUploadResponse(objectName, url, contentType, file.getSize());
+        FileUploadResponse response = new FileUploadResponse(objectName, url, contentType, file.getSize(), null);
+        response.setDisplayName(extractDisplayName(objectName, file.getOriginalFilename()));
+        return response;
+    }
+
+    @Override
+    public List<FileUploadResponse> listMine() {
+        String bucketName = minioProperties.resolvedBucketName();
+        String prefix = CurrentUser.getUserId() + "/";
+        List<Item> items = minioUtils.getAllObjectsByPrefix(bucketName, prefix, false);
+        List<FileUploadResponse> result = new ArrayList<>();
+        for (Item item : items) {
+            if (item.isDir()) {
+                continue;
+            }
+            String objectName = item.objectName();
+            String url = minioUtils.getPresignedObjectUrl(bucketName, objectName, PRESIGNED_URL_EXPIRE_SECONDS);
+            FileUploadResponse row = new FileUploadResponse(objectName, url, null, item.size(), null);
+            row.setDisplayName(extractDisplayName(objectName, null));
+            result.add(row);
+        }
+        result.sort(Comparator.comparing(FileUploadResponse::getObjectName).reversed());
+        return result;
     }
 
     @Override
@@ -65,7 +89,9 @@ public class FileStorageServiceimpl implements FileStorageService {
 
         String url = minioUtils.getPresignedObjectUrl(bucketName, objectName, PRESIGNED_URL_EXPIRE_SECONDS);
         // 仅查链接时不回填 contentType、size
-        return new FileUploadResponse(objectName, url, null, null);
+        FileUploadResponse response = new FileUploadResponse(objectName, url, null, null, null);
+        response.setDisplayName(extractDisplayName(objectName, null));
+        return response;
     }
 
     @Override
@@ -85,6 +111,27 @@ public class FileStorageServiceimpl implements FileStorageService {
     /**
      * 生成 MinIO 对象名，去掉路径中的目录部分，防止 ../ 类路径穿越。
      */
+    /** 对象键格式为 {userId}/{uuid}-{原始文件名} */
+    private static String extractDisplayName(String objectName, String fallbackOriginal) {
+        if (StringUtils.hasText(fallbackOriginal)) {
+            String safe = fallbackOriginal.replace("\\", "/");
+            int slash = safe.lastIndexOf('/');
+            return slash >= 0 ? safe.substring(slash + 1) : safe;
+        }
+        if (!StringUtils.hasText(objectName)) {
+            return "未命名文件";
+        }
+        String key = objectName.substring(objectName.lastIndexOf('/') + 1);
+        int sep = key.indexOf('-');
+        if (sep == 36 && key.length() > 37) {
+            return key.substring(37);
+        }
+        if (sep > 0 && sep < key.length() - 1) {
+            return key.substring(sep + 1);
+        }
+        return key;
+    }
+
     private String buildObjectName(String originalFilename) {
         String safeName = StringUtils.hasText(originalFilename) ? originalFilename : "file";
         safeName = safeName.replace("\\", "/");
