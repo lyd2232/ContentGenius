@@ -284,10 +284,12 @@ async function runGeneration(
           preview.value += text
         },
         onDone: (data) => {
-          const full = preview.value
+          if (data?.content?.trim()) {
+            preview.value = data.content
+          }
           versionInfo.value = data
           versionStatus.value = 0
-          recordSessionDraft(full, data, instructionLabel)
+          recordSessionDraft(preview.value, data, instructionLabel)
           applyMemoryFromResponse(data)
           generating.value = false
         },

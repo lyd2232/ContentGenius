@@ -24,4 +24,6 @@ public class ChatContext {
     String thinkAction;
     /** 入口线程捕获的登录用户 id，异步/流式回调不得再读 SecurityContext */
     Long userId;
+    /** 联网检索摘要（仅注入 prompt；成稿时可追加参考链接） */
+    String webContext;
 }

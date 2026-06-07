@@ -4,10 +4,13 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 
 @Component
 public class PromptBuilder {
+
+    private static final Pattern HTTP_URL = Pattern.compile("https?://\\S+");
 
     /** Nacos 未配置时的全局写稿规则兜底 */
     private static final String DEFAULT_BASE_INSTRUCTION = """
@@ -50,18 +53,27 @@ public class PromptBuilder {
                     .append('\n');
         }
 
-        if (StringUtils.hasText(webContext)) {
+        if (StringUtils.hasText(webContext) && containsHttpUrl(webContext)) {
             sb.append("\n可参考以下联网检索摘要（含来源链接，注意时效并自行核实，勿照抄）：\n")
                     .append(webContext.trim())
                     .append('\n')
                     .append("""
                             
-                            输出要求（强制）：
-                            1) 正文写完后，必须追加一个“参考链接”小节；
-                            2) 至少列出 3 条可访问 URL（每行一条）；
-                            3) 只能使用上方联网检索摘要里出现过的链接，不得编造。
+                            输出要求（参考链接，仅当上方摘要含真实 URL 时）：
+                            1) 正文后可追加「参考链接」小节，每行一条完整 https:// 或 http:// 地址；
+                            2) 只能使用摘要里出现过的链接，不得编造；
+                            3) 禁止写 [链接1]、占位符或「这里应该放置链接」等说明性文字；凑不齐 URL 则不要输出该小节。
                             """);
+        } else if (StringUtils.hasText(webContext)) {
+            sb.append("\n可参考以下联网检索摘要（注意时效并自行核实，勿照抄）：\n")
+                    .append(webContext.trim())
+                    .append('\n');
         }
+
+        sb.append("""
+                
+                通用约束：若无明确可用的 https:// 来源，不要输出「参考链接」小节，不要写任何链接占位符。
+                """);
 
         return sb.toString().trim();
     }
@@ -157,5 +169,9 @@ public class PromptBuilder {
 
     private static String normalizePlatform(String platform) {
         return StringUtils.hasText(platform) ? platform.trim().toLowerCase() : "";
+    }
+
+    private static boolean containsHttpUrl(String text) {
+        return StringUtils.hasText(text) && HTTP_URL.matcher(text).find();
     }
 }

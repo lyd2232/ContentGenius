@@ -28,7 +28,10 @@ public class AgentChatController {
         return Result.ok(data);
     }
     //流式
-    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/chat/stream", produces = {
+            MediaType.TEXT_EVENT_STREAM_VALUE,
+            MediaType.APPLICATION_JSON_VALUE
+    })
     public Flux<AgentChatResponse> chatStream(@Valid @RequestBody AgentChatRequest request) {
         Flux<AgentChatResponse> data = agentChatService.chatStream(request);
         return data;

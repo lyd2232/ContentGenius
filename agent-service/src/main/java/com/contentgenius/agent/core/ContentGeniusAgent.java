@@ -3,6 +3,8 @@ package com.contentgenius.agent.core;
 import com.contentgenius.agent.client.ContentTemplateClient;
 import com.contentgenius.agent.client.Versions;
 import com.contentgenius.agent.config.HotTopicSearcher;
+import com.contentgenius.agent.util.DraftContentSanitizer;
+import com.contentgenius.agent.util.WebReferenceAppender;
 import com.contentgenius.agent.config.PromptBuilder;
 import com.contentgenius.agent.config.QdrantStorage;
 import com.contentgenius.agent.config.RedisQueueService;
@@ -78,13 +80,14 @@ public class ContentGeniusAgent {
     }
 
     private AgentChatResponse finishChat(ChatContext ctx, ArticleDraft draft) {
+        String contentWithRefs = WebReferenceAppender.appendReferences(draft.getContent(), ctx.getWebContext());
         ContentVersionDto saved = saveVersion(
-                ctx.getProjectId(), resolveCreationTheme(ctx), draft.getContent(),
+                ctx.getProjectId(), resolveCreationTheme(ctx), contentWithRefs,
                 ctx.getPlatform(), ctx.getAuthorization(), draft.getTitle());
         int effectiveMemoryId = resolveEffectiveMemoryId(ctx.getMemoryId(), saved.getId());
         persistDraftMemory(effectiveMemoryId, ctx.getUserId(), saved.getContent(), ctx.getCreationTheme());
         AgentChatResponse response = new AgentChatResponse(
-                draft.getContent(), ctx.getPlatform(), saved.getId(), saved.getVersionNo(), ctx.getMode().getCode());
+                saved.getContent(), ctx.getPlatform(), saved.getId(), saved.getVersionNo(), ctx.getMode().getCode());
         response.setMemoryId(effectiveMemoryId);
         return response;
     }
@@ -117,7 +120,7 @@ public class ContentGeniusAgent {
         return Flux.<AgentChatResponse>create(sink ->
                         streamWithTokenStreamFallback(RouteType.ARTICLE, systemPrompt, userPrompt,
                                 projectId, ctx.getCreationTheme(), topic, resolvedPlatform, authorization,
-                                ctx.getMode(), memoryId, userId, fullContent, emittedPartial, sink))
+                                ctx.getMode(), memoryId, userId, ctx.getWebContext(), fullContent, emittedPartial, sink))
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -157,6 +160,7 @@ public class ContentGeniusAgent {
                                                ChatMode mode,
                                                Integer memoryId,
                                                Long userId,
+                                               String webContext,
                                                StringBuilder fullContent,
                                                AtomicBoolean emittedPartial,
                                                FluxSink<AgentChatResponse> sink) {
@@ -189,13 +193,14 @@ public class ContentGeniusAgent {
                             return;
                         }
                         try {
-                            // C2) 用完整正文落库 content_version
+                            String contentWithRefs = WebReferenceAppender.appendReferences(
+                                    fullContent.toString(), webContext);
                             ContentVersionDto saved = saveVersion(
-                                    projectId, creationTheme, fullContent.toString(), platform, authorization, null);
+                                    projectId, creationTheme, contentWithRefs, platform, authorization, null);
                             int effectiveMemoryId = resolveEffectiveMemoryId(memoryId, saved.getId());
-                            persistDraftMemory(effectiveMemoryId, userId, fullContent.toString(), creationTheme);
+                            persistDraftMemory(effectiveMemoryId, userId, saved.getContent(), creationTheme);
                             AgentChatResponse done = new AgentChatResponse(
-                                    "", platform, saved.getId(), saved.getVersionNo(), mode.getCode());
+                                    saved.getContent(), platform, saved.getId(), saved.getVersionNo(), mode.getCode());
                             done.setMemoryId(effectiveMemoryId);
                             sink.next(done);
                             // C4) 正常结束 SSE 流
@@ -222,7 +227,7 @@ public class ContentGeniusAgent {
                                 // D4) 递归切换到备胎模型，复用同一 sink/fullContent
                                 streamWithTokenStreamFallback(RouteType.FALLBACK, systemPrompt, userPrompt,
                                         projectId, creationTheme, topic, platform, authorization, mode, memoryId,
-                                        userId, fullContent, emittedPartial, sink);
+                                        userId, webContext, fullContent, emittedPartial, sink);
                                 return;
                             }
                             // D5) 不可降级错误：直接转换业务异常返回
@@ -261,7 +266,7 @@ public class ContentGeniusAgent {
         String authorization = currentAuthorizationHeader();
 
         return new ChatContext(projectId, theme, instruction, resolvedPlatform, systemPrompt, userPrompt,
-                authorization, resolvedMode, memoryid, normalizeThinkAction(thinkAction), userId);
+                authorization, resolvedMode, memoryid, normalizeThinkAction(thinkAction), userId, webContext);
     }
 
     private static String normalizeThinkAction(String thinkAction) {
@@ -518,9 +523,10 @@ public class ContentGeniusAgent {
 //存稿内部方法
     private ContentVersionDto saveVersion(Long projectId, String topic, String content, String platform,
                                           String authorization, String titleOverride) {
+        String sanitizedContent = DraftContentSanitizer.sanitize(content);
         VersionRequest request = new VersionRequest();
         request.setTitle(StringUtils.hasText(titleOverride) ? titleOverride.trim() : buildTitle(topic));
-        request.setContent(content);
+        request.setContent(sanitizedContent);
         request.setPlatform(platform);
         request.setSource(SOURCE_AGENT);
 
