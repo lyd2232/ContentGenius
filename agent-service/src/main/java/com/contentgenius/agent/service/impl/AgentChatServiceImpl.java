@@ -6,9 +6,7 @@ import com.contentgenius.agent.dto.AgentChatRequest;
 import com.contentgenius.agent.dto.AgentChatResponse;
 import com.contentgenius.agent.model.ChatMode;
 import com.contentgenius.agent.service.AgentChatService;
-import com.contentgenius.common.exception.BusinessException;
-import com.contentgenius.common.exception.ErrorCode;
-import com.github.houbb.sensitive.word.core.SensitiveWordHelper;
+import com.contentgenius.common.sensitive.SensitiveWordChecker;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -54,13 +52,6 @@ public class AgentChatServiceImpl implements AgentChatService {
     }
 
     private static void checkSensitive(String creationTheme, String topic) {
-        for (String text : new String[]{creationTheme, topic}) {
-            if (text != null && SensitiveWordHelper.contains(text)) {
-                throw new BusinessException(
-                        ErrorCode.CONTENT_CONTAINS_SENSITIVE_WORDS,
-                        "内容包含敏感词，请修改后重试。参考：" + SensitiveWordHelper.replace(text)
-                );
-            }
-        }
+        SensitiveWordChecker.requireClean(creationTheme, topic);
     }
 }

@@ -8,7 +8,40 @@ export const login = (username, password) =>
     body: JSON.stringify({ username, password })
   }).then((d) => d.token)
 
+export const register = (body) =>
+  request('/api/users/register', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  })
+
+/** 发送注册短信验证码 */
+export const sendRegisterSms = (phone) =>
+  request('/api/users/sms/send', {
+    method: 'POST',
+    body: JSON.stringify({ phone })
+  })
+
 export const fetchMe = () => request('/api/users/me')
+
+export const updateProfile = (body) =>
+  request('/api/users/me', { method: 'PUT', body: JSON.stringify(body) })
+
+export const changePassword = (body) =>
+  request('/api/users/me/password', { method: 'PUT', body: JSON.stringify(body) })
+
+export const deleteAccount = (password) =>
+  request('/api/users/me', {
+    method: 'DELETE',
+    body: JSON.stringify({ password })
+  })
+
+export const listFeedback = () => request('/api/users/feedback')
+
+export const submitFeedback = (content) =>
+  request('/api/users/feedback', {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  })
 
 export const listProjects = () => request('/api/content/projects')
 

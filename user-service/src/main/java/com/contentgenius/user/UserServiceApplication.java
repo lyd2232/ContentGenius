@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 @SpringBootApplication(scanBasePackages = {"com.contentgenius.user", "com.contentgenius.common"})
 @MapperScan("com.contentgenius.user.mapper")
-@EnableConfigurationProperties(JwtAuthenticationFilter.class)
+@EnableConfigurationProperties({JwtAuthenticationFilter.class})
 public class UserServiceApplication {
 
     public static void main(String[] args) {

@@ -13,20 +13,20 @@ const nav = [
   { to: '/projects', label: '我的项目' },
   { to: '/create', label: 'AI 创作' },
   { to: '/materials', label: '素材库' },
-  { to: '/member', label: '会员中心' },
+  { to: '/member', label: '意见箱' },
   { to: '/settings', label: '设置' }
 ]
 
 const quotaLabel = computed(() => {
   const level = user.value?.memberLevel ?? 0
-  if (level >= 2) return '今日额度：充足（VIP）'
-  if (level === 1) return '今日额度：3 次 / 日'
-  return '今日额度：1 次 / 日'
+  if (level >= 2) return '内测阶段 · 每日 10 次'
+  if (level === 1) return '每日 3 次（旧档位）'
+  return '每日 1 次（旧档位）'
 })
 
 const memberTag = computed(() => {
   const level = user.value?.memberLevel ?? 0
-  if (level >= 2) return { text: 'VIP', accent: true }
+  if (level >= 2) return { text: '内测', accent: true }
   if (level === 1) return { text: '标准', accent: false }
   return { text: '免费', accent: false }
 })
@@ -55,7 +55,7 @@ function isActive(item) {
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true" />
+        <img src="/logo.png" alt="" class="brand-logo" width="40" height="40" />
         <div>
           <div class="brand-name">ContentGenius</div>
           <div class="brand-sub">AI 内容工作台</div>
@@ -85,7 +85,7 @@ function isActive(item) {
           <button class="sketch-btn secondary" type="button" @click="logout">退出</button>
         </div>
       </header>
-      <main class="content">
+      <main class="content" :class="{ 'content--create': route.path === '/create' }">
         <RouterView />
       </main>
     </div>
@@ -95,7 +95,8 @@ function isActive(item) {
 <style scoped>
 .layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -115,15 +116,6 @@ function isActive(item) {
   padding: 0 1.25rem 1.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 0.75rem;
-}
-
-.brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  background: linear-gradient(145deg, #1b4332 0%, #0d2818 100%);
-  box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.45);
 }
 
 .brand-name {
@@ -174,6 +166,8 @@ function isActive(item) {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--cg-page);
 }
 
@@ -214,5 +208,12 @@ function isActive(item) {
   max-width: 1280px;
   width: 100%;
   box-sizing: border-box;
+  overflow: auto;
+}
+
+.content--create {
+  padding: 0.75rem 1rem 1rem;
+  max-width: none;
+  overflow: hidden;
 }
 </style>

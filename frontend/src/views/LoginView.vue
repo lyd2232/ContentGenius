@@ -28,7 +28,7 @@ async function submit() {
 <template>
   <div class="login-page">
     <aside class="login-brand">
-      <div class="brand-mark" aria-hidden="true" />
+      <img src="/logo.png" alt="" class="brand-logo brand-logo--lg" width="52" height="52" />
       <h1>ContentGenius</h1>
       <p class="tagline">多平台 AI 写稿，从主题到定稿</p>
       <ul class="features">
@@ -54,6 +54,10 @@ async function submit() {
       <button class="sketch-btn login-submit" type="submit" :disabled="loading">
         {{ loading ? '登录中…' : '进入工作台' }}
       </button>
+      <p class="switch-link">
+        还没有账号？
+        <RouterLink to="/register">立即注册</RouterLink>
+      </p>
     </form>
   </div>
 </template>
@@ -82,15 +86,6 @@ async function submit() {
   display: flex;
   flex-direction: column;
   justify-content: center;
-}
-
-.brand-mark {
-  width: 52px;
-  height: 52px;
-  border-radius: 10px;
-  background: linear-gradient(145deg, #1b4332 0%, #0d2818 100%);
-  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.45);
-  margin-bottom: 1.5rem;
 }
 
 .login-brand h1 {
@@ -162,5 +157,22 @@ async function submit() {
 .err {
   margin: 0;
   font-size: 0.875rem;
+}
+
+.switch-link {
+  margin: 0.75rem 0 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--cg-gray-600);
+}
+
+.switch-link a {
+  color: var(--cg-green-800);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.switch-link a:hover {
+  text-decoration: underline;
 }
 </style>

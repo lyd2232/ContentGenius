@@ -51,6 +51,12 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  height: 100%;
+}
+
 body {
   margin: 0;
   font-family: 'DM Sans', 'Noto Sans SC', 'Segoe UI', system-ui, sans-serif;
@@ -58,10 +64,6 @@ body {
   line-height: 1.5;
   color: var(--cg-text);
   background: var(--cg-page);
-}
-
-#app {
-  min-height: 100vh;
 }
 
 h1,
@@ -249,4 +251,20 @@ h3 {
 
 .text-success {
   color: var(--cg-success);
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+
+.brand-logo--lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  margin-bottom: 1.5rem;
 }

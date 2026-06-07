@@ -29,7 +29,11 @@ public class SecurityConfig {
 // 配置请求授权规则
                 .authorizeHttpRequests(auth -> auth
                         // 注册和登录接口允许匿名访问
-                        .requestMatchers("/api/users/register", "/api/users/login").permitAll()
+                        .requestMatchers(
+                                "/api/users/register",
+                                "/api/users/login",
+                                "/api/users/sms/send"
+                        ).permitAll()
                         // 其他所有请求都需要认证
                         .anyRequest().authenticated()
                 )

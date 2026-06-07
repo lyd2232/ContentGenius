@@ -7,6 +7,6 @@ public interface RegisterService {
 
     Boolean register(RegisterParam param);
 
-    record RegisterParam(String username, String password, String email, String phone) {
+    record RegisterParam(String username, String password, String email, String phone, String smsCode) {
     }
 }

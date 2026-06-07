@@ -17,4 +17,10 @@ public interface UserService {
     Boolean update(User user);
 
     Boolean delete(Long id);
+
+    /** 校验当前密码后修改为新密码（明文入参） */
+    Boolean changePassword(Long userId, String oldPassword, String newPassword);
+
+    /** 校验密码后注销账号（物理删除） */
+    Boolean deleteAccount(Long userId, String password);
 }

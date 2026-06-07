@@ -44,10 +44,10 @@ public class UserServiceimpl implements UserService {
         if (db == null) {
             return false;
         }
-        if (StringUtils.hasText(user.getEmail())) {
+        if (user.getEmail() != null) {
             db.setEmail(user.getEmail());
         }
-        if (StringUtils.hasText(user.getPhone())) {
+        if (user.getPhone() != null) {
             db.setPhone(user.getPhone());
         }
         if (StringUtils.hasText(user.getPassword())) {
@@ -59,5 +59,44 @@ public class UserServiceimpl implements UserService {
     @Override
     public Boolean delete(Long id) {
         return userMapper.deleteById(id) > 0;
+    }
+
+    @Override
+    public Boolean changePassword(Long userId, String oldPassword, String newPassword) {
+        User db = requireUser(userId);
+        assertPasswordMatches(db, oldPassword);
+        assertNewPasswordValid(newPassword);
+        db.setPassword(passwordEncoder.encode(newPassword.trim()));
+        return userMapper.updateById(db) > 0;
+    }
+
+    @Override
+    public Boolean deleteAccount(Long userId, String password) {
+        User db = requireUser(userId);
+        assertPasswordMatches(db, password);
+        return userMapper.deleteById(userId) > 0;
+    }
+
+    private User requireUser(Long userId) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.USER_ID_REQUIRED);
+        }
+        User db = userMapper.selectById(userId);
+        if (db == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
+        return db;
+    }
+
+    private void assertPasswordMatches(User db, String rawPassword) {
+        if (!StringUtils.hasText(rawPassword) || !passwordEncoder.matches(rawPassword, db.getPassword())) {
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS, "密码不正确");
+        }
+    }
+
+    private static void assertNewPasswordValid(String newPassword) {
+        if (!StringUtils.hasText(newPassword) || newPassword.trim().length() < 6) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "新密码至少 6 位");
+        }
     }
 }

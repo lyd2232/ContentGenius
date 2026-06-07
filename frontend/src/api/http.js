@@ -1,5 +1,16 @@
 const TOKEN_KEY = 'cg_token'
 
+/** 无需登录的接口：不附带 token，避免本地残留过期 token 被网关拦成 401 */
+const PUBLIC_API_PREFIXES = [
+  '/api/users/login',
+  '/api/users/register',
+  '/api/users/sms/send'
+]
+
+function isPublicApi(url) {
+  return PUBLIC_API_PREFIXES.some((prefix) => url.startsWith(prefix))
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY) || ''
 }
@@ -18,7 +29,7 @@ export async function request(url, options = {}) {
     ...(options.headers || {})
   }
   const token = getToken()
-  if (token) {
+  if (token && !isPublicApi(url)) {
     headers.Authorization = `Bearer ${token}`
   }
 

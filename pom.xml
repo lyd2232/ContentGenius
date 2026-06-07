@@ -35,6 +35,8 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <langchain4j-embeddings.version>${langchain4j.version}</langchain4j-embeddings.version>
     <xxl-job.version>2.4.1</xxl-job.version>
+    <!-- 阿里云号码认证 SDK（SendSmsVerifyCode，Java 17 兼容） -->
+    <aliyun-dypnsapi.version>2.0.0</aliyun-dypnsapi.version>
   </properties>
   <dependencyManagement>
     <dependencies>
@@ -98,6 +100,11 @@
         <groupId>com.xuxueli</groupId>
         <artifactId>xxl-job-core</artifactId>
         <version>${xxl-job.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.aliyun</groupId>
+        <artifactId>dypnsapi20170525</artifactId>
+        <version>${aliyun-dypnsapi.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

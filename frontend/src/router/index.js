@@ -3,6 +3,7 @@ import { getToken } from '../api/http'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
+  { path: '/register', name: 'register', component: () => import('../views/RegisterView.vue') },
   {
     path: '/',
     component: () => import('../layouts/AppLayout.vue'),
@@ -24,7 +25,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.path === '/login') return true
+  if (to.path === '/login' || to.path === '/register') return true
   if (!getToken()) return '/login'
   return true
 })

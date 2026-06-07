@@ -635,20 +635,45 @@ async function finalizeDraft() {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .create-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 1rem;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 0.75rem;
   align-items: stretch;
-  min-height: calc(100vh - 7.5rem);
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.panel {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.1rem;
 }
 
 @media (max-width: 900px) {
+  .create-page {
+    overflow: auto;
+    height: auto;
+  }
+
   .create-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
+
+  .panel {
+    max-height: none;
+  }
+
+  .preview-column {
+    min-height: 60vh;
   }
 }
 
@@ -658,26 +683,32 @@ h3 {
   color: var(--cg-green-900);
 }
 
+.panel h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+}
+
 .panel-hint {
-  margin: -0.25rem 0 1rem;
-  font-size: 0.8125rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
 }
 
 .field-hint {
-  margin: 0.25rem 0 0.65rem;
-  font-size: 0.75rem;
-  line-height: 1.4;
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
 }
 
 .requirement-input {
-  min-height: 4.5rem;
-  resize: vertical;
+  min-height: 3.25rem;
+  max-height: 5rem;
+  resize: none;
 }
 
 .session-warn {
-  margin: 0.65rem 0 0.5rem;
-  font-size: 0.8125rem;
-  line-height: 1.45;
+  margin: 0.4rem 0 0.35rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
   color: var(--cg-gray-600);
 }
 
@@ -800,14 +831,17 @@ h3 {
 
 .preview-scroll {
   flex: 1;
-  overflow: auto;
-  padding: 0 1.5rem 1rem;
-  min-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 1.25rem 0.75rem;
+  min-height: 0;
 }
 
 .followup-bar {
   flex-shrink: 0;
-  padding: 1rem 1.25rem 1.15rem;
+  max-height: 42%;
+  overflow-y: auto;
+  padding: 0.75rem 1rem 0.85rem;
   background: linear-gradient(160deg, var(--cg-green-900) 0%, var(--cg-green-950) 100%);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -899,10 +933,10 @@ h3 {
 
 .think-step-row {
   display: grid;
-  grid-template-columns: 5.5rem 1fr auto;
-  gap: 0.5rem;
+  grid-template-columns: 4.75rem 1fr auto;
+  gap: 0.4rem;
   align-items: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
 }
 
 .think-step-label {
