@@ -1,40 +1,31 @@
-# ContentGenius
-
-面向自媒体创作者的 AI 内容创作与分发平台（Spring Boot 3 微服务 + LangChain4j）。
-
+# ContentGenius · 内容天才
+面向**自媒体创作者**的 AI 内容创作平台：从选题、写稿、改稿到版本管理与知识库检索，一站式完成多平台（小红书 / 公众号 / B站等）内容生产。
+## 项目是干什么的
+| 能力 | 说明 |
+|------|------|
+| **AI 写稿** | 快速 / 思考 / 智能路由三种模式；支持流式输出、多轮改稿 |
+| **联网搜索** | Tavily 实时检索，成稿可附带参考链接 |
+| **RAG 知识库** | 定稿写入 Qdrant 向量库，后续创作可检索历史风格 |
+| **内容与版本** | 项目、稿件版本、MinIO 附件存储 |
+| **用户与额度** | 注册登录、会员等级、每日创作次数（Redis 计数） |
+| **意见反馈** | 内测意见箱，全员可见 |
+典型流程：**登录 → 选项目 → 填主题与要求 → Agent 生成草稿 → 改稿 / 定稿 → 可选写入 RAG**。
+## 后端技术栈
+| 类别 | 技术 |
+|------|------|
+| 语言 / 运行时 | Java 17 |
+| 核心框架 | Spring Boot 3.2、Spring Cloud 2023、Spring Security |
+| 微服务治理 | Nacos（配置 + 注册发现）、Spring Cloud Gateway、OpenFeign |
+| 数据层 | MySQL、MyBatis-Plus、Redis |
+| 对象存储 | MinIO |
+| AI 编排 | LangChain4j 1.15、通义千问（DashScope 兼容 API） |
+| Agent 能力 | SSE 流式、Tavily 联网搜索、Qdrant 向量 RAG、多模型路由（fast / quality / fallback） |
+| 其他 | JWT 鉴权、敏感词过滤、阿里云号码认证短信 |
 ## 模块
-
 | 模块 | 说明 |
 |------|------|
-| `contentgenius-common` | 公共依赖（JWT、DTO 等） |
+| `contentgenius-common` | 公共依赖（JWT、DTO、统一异常与 Result 等） |
 | `gateway-service` | 网关、鉴权、限流 |
-| `user-service` | 用户与会员 |
-| `content-service` | 项目与内容版本、MinIO |
-| `agent-service` | LangChain4j Agent |
-| `analytics-service` | 发布效果统计【MVP 不做，仅占位】 |
-
-> 支付/订阅模块已移除（涉及支付需备案）；会员等级与额度仍在 `user-service` + Redis 计数。
-
-## 前端（手绘风 UI）
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-见 [frontend/README.md](frontend/README.md)。浏览器 http://localhost:5173 ，API 代理到 Gateway 8080。
-
-## 构建
-
-```bash
-mvn clean install -DskipTests
-```
-
-## 开发计划
-
-- **总日程（唯一源）**：[docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md)（含 5 月基建、6 月业务、Agent 亮点、可扩展项标注）
-- Agent 架构备查：[docs/AGENT_HIGHLIGHT_PLAN.md](docs/AGENT_HIGHLIGHT_PLAN.md)
-- 认证深化（双 Token）：[docs/AUTH_TOKEN_PLAN.md](docs/AUTH_TOKEN_PLAN.md)
-
-配置统一在 **Nacos** 维护，仓库内不提供 `application.yml` 模板。
+| `user-service` | 用户、会员、短信验证码、意见箱 |
+| `content-service` | 项目与内容版本、MinIO 文件 |
+| `agent-service` | LangChain4j Agent（写稿 / 改稿 / RAG / 联网） |
