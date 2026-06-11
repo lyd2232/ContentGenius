@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login } from '../api'
 import { setToken } from '../api/http'
+import { SITE_NAME, SITE_REGISTERED } from '../constants/brand'
 
 const router = useRouter()
 const username = ref('')
@@ -29,7 +30,8 @@ async function submit() {
   <div class="login-page">
     <aside class="login-brand">
       <img src="/logo.png" alt="" class="brand-logo brand-logo--lg" width="52" height="52" />
-      <h1>ContentGenius</h1>
+      <h1>{{ SITE_NAME }}</h1>
+      <p class="brand-registered">{{ SITE_REGISTERED }}</p>
       <p class="tagline">多平台 AI 写稿，从主题到定稿</p>
       <ul class="features">
         <li>LangChain4j Agent 流式创作</li>
@@ -92,6 +94,13 @@ async function submit() {
   margin: 0;
   font-size: 1.75rem;
   color: #fff;
+}
+
+.brand-registered {
+  margin: 0.35rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(232, 240, 235, 0.92);
 }
 
 .tagline {

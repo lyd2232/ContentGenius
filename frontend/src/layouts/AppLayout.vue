@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { fetchMe } from '../api'
 import { clearToken } from '../api/http'
+import { SITE_NAME, SITE_REGISTERED } from '../constants/brand'
 
 const router = useRouter()
 const route = useRoute()
@@ -55,10 +56,12 @@ function isActive(item) {
   <div class="layout">
     <aside class="sidebar">
       <div class="brand">
-        <img src="/logo.png" alt="" class="brand-logo" width="40" height="40" />
+        <div class="brand-logo-wrap">
+          <img src="/logo.png" alt="" class="brand-logo" width="34" height="34" />
+        </div>
         <div>
-          <div class="brand-name">ContentGenius</div>
-          <div class="brand-sub">AI 内容工作台</div>
+          <div class="brand-name">{{ SITE_NAME }}</div>
+          <div class="brand-sub">{{ SITE_REGISTERED }}</div>
         </div>
       </div>
       <nav class="nav">
@@ -116,6 +119,17 @@ function isActive(item) {
   padding: 0 1.25rem 1.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 0.75rem;
+}
+
+.brand-logo-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .brand-name {

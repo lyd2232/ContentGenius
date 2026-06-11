@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { changePassword, deleteAccount, fetchMe, updateProfile } from '../api'
 import { clearToken } from '../api/http'
+import { SITE_FULL_TITLE } from '../constants/brand'
 
 const router = useRouter()
 const panel = ref('hub')
@@ -288,7 +289,7 @@ async function confirmDelete() {
 
       <!-- 关于 -->
       <section v-else-if="panel === 'about'" class="panel-form about">
-        <p class="about-version">ContentGenius v1.0.0</p>
+        <p class="about-version">{{ SITE_FULL_TITLE }} v1.0.0</p>
         <p class="text-muted">多平台 AI 内容创作工作台</p>
         <ul class="about-list text-muted">
           <li>LangChain4j Agent 流式创作</li>

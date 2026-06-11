@@ -1,0 +1,10 @@
+# 复制/合并到 Nacos：Data ID = gateway-service-dev.yaml
+# 注册页「获取验证码」走 /api/users/sms/send，必须在 jwt.skip-auth-urls 里放行
+
+jwt:
+  secret-key: 与 user-service-dev 保持一致
+  expire-time: 604800000
+  skip-auth-urls:
+    - /api/users/register
+    - /api/users/login
+    - /api/users/sms/send
